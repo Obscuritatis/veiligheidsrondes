@@ -229,7 +229,9 @@ function viewSites() {
       <div class="last">${last ? "Laatste ronde " + fmtDate(last) : "Nog geen ronde"}</div>
     </button>`;
   }).join("");
-  return `<div style="display:grid;gap:12px"><p class="muted" style="margin:0">Kies een site om een veiligheidsronde te starten of observaties op te volgen.</p><div class="sites">${cards}</div></div>`;
+  const v = lokaleVoorraad();
+  const over = v ? `<div class="panel"><h3>Gegevens op dit toestel</h3><p style="margin:0">Op dit toestel staan nog ${v.rondes.length} rondes en ${v.observaties.length} observaties die niet gedeeld zijn.</p><div><button class="btn primary" data-overzetten>Zet ze over naar de gedeelde opslag</button></div></div>` : "";
+  return `<div style="display:grid;gap:12px">${over}<p class="muted" style="margin:0">Kies een site om een veiligheidsronde te starten of observaties op te volgen.</p><div class="sites">${cards}</div></div>`;
 }
 
 function viewSite() {
@@ -345,6 +347,58 @@ function viewRonde() {
   </div>`;
 }
 
+/* ---------- Lokale opslag (zolang Supabase niet gekoppeld is) ---------- */
+const LOKAAL_KEY = "veiligheidsrondes-lokaal";
+let lokaal = false;
+function leesLokaal() {
+  try { const d = JSON.parse(localStorage.getItem(LOKAAL_KEY) || "null"); if (d && Array.isArray(d.rondes) && Array.isArray(d.observaties)) return d; } catch {}
+  return { rondes: [], observaties: [] };
+}
+function schrijfLokaal(d) { localStorage.setItem(LOKAAL_KEY, JSON.stringify(d)); }
+const OBS_STANDAARD = { gebouw: "", verdiep: "", lokaal: "", omschrijving: "", gemeld: false, opgelost: false };
+function lokaleClient() {
+  const ok = { error: null };
+  const doe = fn => { try { fn(); return ok; } catch (e) { return { error: e }; } };
+  return {
+    from(tabel) {
+      return {
+        select: async () => ({ data: leesLokaal()[tabel], error: null }),
+        insert: async rij => doe(() => {
+          const d = leesLokaal();
+          d[tabel].push({ ...(tabel === "observaties" ? OBS_STANDAARD : {}), ...rij, id: rij.id || crypto.randomUUID(), aangemaakt: new Date().toISOString() });
+          schrijfLokaal(d);
+        }),
+        update: wijz => ({ eq: async (_k, id) => doe(() => {
+          const d = leesLokaal();
+          d[tabel] = d[tabel].map(r => r.id === id ? { ...r, ...wijz } : r);
+          schrijfLokaal(d);
+        }) }),
+        delete: () => ({ eq: async (_k, id) => doe(() => {
+          const d = leesLokaal();
+          d[tabel] = d[tabel].filter(r => r.id !== id);
+          if (tabel === "rondes") d.observaties = d.observaties.filter(o => o.ronde_id !== id);
+          schrijfLokaal(d);
+        }) }),
+      };
+    },
+  };
+}
+
+// Gegevens die nog lokaal op dit toestel staan, overzetten naar Supabase.
+function lokaleVoorraad() { if (lokaal) return null; let d; try { d = leesLokaal(); } catch { return null; } return d.rondes.length ? d : null; }
+async function zetLokaalOver() {
+  const d = lokaleVoorraad(); if (!d) return;
+  const rondesRijen = d.rondes.map(({ id, site, datum, aangemaakt }) => ({ id, site, datum, aangemaakt }));
+  const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt }) =>
+    ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt }));
+  let r = await sb.from("rondes").upsert(rondesRijen);
+  if (!r.error && obsRijen.length) r = await sb.from("observaties").upsert(obsRijen);
+  if (r.error) { console.error(r.error); toast("Overzetten mislukt. Heb je toegang gekregen?"); return; }
+  try { localStorage.setItem(LOKAAL_KEY + "-overgezet", JSON.stringify(d)); localStorage.removeItem(LOKAAL_KEY); } catch {}
+  toast("Gegevens overgezet");
+  laadAlles();
+}
+
 /* ---------- Opslag (Supabase) ---------- */
 const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
   onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt });
@@ -355,7 +409,7 @@ async function laadAlles() {
     sb.from("observaties").select("*"),
   ]);
   if (r.error || o.error) { banner("De gegevens konden niet geladen worden. Heb je toegang gekregen? Vraag het aan de beheerder."); return; }
-  banner("");
+  banner(lokaal ? "Gegevens worden voorlopig enkel op dit toestel bewaard." : "");
   rondes = r.data.map(fromRow); obs = o.data.map(fromRow);
   ready.rondes = ready.obs = true;
   renderSafe();
@@ -433,6 +487,7 @@ document.addEventListener("click", async e => {
   if (!b) return;
   const d = b.dataset;
   if (b.id === "logout") { await sb.auth.signOut(); return; }
+  if ("overzetten" in d) { b.disabled = true; await zetLokaalOver(); return; }
   if ("goSites" in d) go("sites");
   else if (d.goSite) go("site", { site: d.goSite });
   else if (d.goRonde) go("ronde", { ronde: d.goRonde, filter: "alle" });
@@ -460,6 +515,7 @@ function zetSessie(s) {
   $("#who-mail").textContent = s ? s.user.email : "";
   if (s && !was) {
     laadAlles();
+    if (lokaal) return render();
     kanaal = sb.channel("wijzigingen")
       .on("postgres_changes", { event: "*", schema: "public", table: "rondes" }, () => laadAlles())
       .on("postgres_changes", { event: "*", schema: "public", table: "observaties" }, () => laadAlles())
@@ -473,8 +529,14 @@ render();
 (async () => {
   const cfg = window.VEILIGHEIDSRONDES_CONFIG || {};
   if (!window.supabase || !cfg.supabaseUrl || !cfg.supabaseAnonKey || /VUL_IN/.test(cfg.supabaseUrl + cfg.supabaseAnonKey)) {
-    banner("De app is nog niet gekoppeld aan de database. Vul config.js in (zie README).");
-    $("#view").innerHTML = "";
+    // Nog geen gedeelde opslag: alles blijft op dit toestel.
+    try { localStorage.setItem(LOKAAL_KEY + "-test", "1"); localStorage.removeItem(LOKAAL_KEY + "-test"); }
+    catch { banner("Deze browser laat geen opslag toe. Open de app in een gewoon (niet-privé) venster."); return; }
+    lokaal = true;
+    sb = lokaleClient();
+    banner("Gegevens worden voorlopig enkel op dit toestel bewaard.");
+    zetSessie({ user: { email: "" } });
+    $("#who").hidden = true;
     return;
   }
   sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);

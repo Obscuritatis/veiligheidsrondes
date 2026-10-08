@@ -20,7 +20,7 @@ create table if not exists public.observaties (
   gebouw text default '',
   verdiep text default '',
   lokaal text default '',
-  onderwerp text not null check (onderwerp in ('Branddeur','Noodverlichting','Versperring doorgang','Versperring blusmiddelen','Rookmelder','Andere')),
+  onderwerp text not null,
   omschrijving text default '',
   gemeld boolean not null default false,
   opgelost boolean not null default false,
@@ -29,6 +29,8 @@ create table if not exists public.observaties (
   aangemaakt_door uuid default auth.uid()
 );
 alter table public.observaties add column if not exists foto text;
+-- De lijst met onderwerpen staat in de app (index.html), niet in de database.
+alter table public.observaties drop constraint if exists observaties_onderwerp_check;
 create index if not exists observaties_ronde_idx on public.observaties(ronde_id);
 
 -- Enkel e-mailadressen in de tabel "toegang" mogen gegevens zien en wijzigen.

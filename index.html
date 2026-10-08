@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Veiligheidsrondes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: smalle werkkolom; overzicht van sites → rondes van één site → observaties van één ronde (breadcrumb-navigatie). */
+:root {
+  --bg: #f5f6f4;
+  --surface: #ffffff;
+  --fg: #1d2220;
+  --muted: #5f6964;
+  --line: #dde1de;
+  --accent: #c8281e;      /* signaalrood, spaarzaam */
+  --accent-fg: #ffffff;
+  --ok: #1d7a4c;          /* veiligheidsgroen: opgelost */
+  --ok-bg: #e3f2ea;
+  --warn: #9a5b00;        /* gemeld, nog niet opgelost */
+  --warn-bg: #fbefd9;
+  --open: #b0261c;
+  --open-bg: #fbe6e3;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --radius: 6px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #141816; --surface: #1d2220; --fg: #e9ecea; --muted: #9aa49f; --line: #2f3633;
+    --accent: #ef5a4c; --accent-fg: #1a0b09;
+    --ok: #5cc98f; --ok-bg: #173327; --warn: #e8ac4f; --warn-bg: #3a2b12; --open: #f07a6e; --open-bg: #3b1a17;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #141816; --surface: #1d2220; --fg: #e9ecea; --muted: #9aa49f; --line: #2f3633;
+  --accent: #ef5a4c; --accent-fg: #1a0b09;
+  --ok: #5cc98f; --ok-bg: #173327; --warn: #e8ac4f; --warn-bg: #3a2b12; --open: #f07a6e; --open-bg: #3b1a17;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 24px; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: .01em; margin: 0; text-wrap: balance; line-height: 1.1; }
+h1 { font-size: 2.2rem; text-transform: uppercase; }
+h2 { font-size: 1.6rem; }
+h3 { font-size: 1.25rem; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.who { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
+.login { max-width: 420px; }
+.sign { width: 40px; height: 40px; flex: none; border-radius: 4px; background: var(--accent); display: grid; place-items: center; }
+.sign svg { width: 24px; height: 24px; }
+.eyebrow { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: .9rem; color: var(--muted); }
+.crumbs button { background: none; border: 0; padding: 0; font: inherit; color: var(--fg); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.muted { color: var(--muted); }
+button, input, select, textarea { font: inherit; color: inherit; }
+.btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: var(--surface); padding: 8px 14px; border-radius: var(--radius); cursor: pointer; font-weight: 500; }
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-fg); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { color: var(--open); }
+.btn.small { padding: 4px 10px; font-size: .85rem; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Sites */
+.sites { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.site { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; cursor: pointer; display: grid; gap: 10px; }
+.site:hover { border-color: var(--muted); }
+.site h3 { font-size: 1.35rem; }
+.stats { display: flex; flex-wrap: wrap; gap: 6px; }
+.pill { display: inline-flex; align-items: center; gap: 4px; font-size: .78rem; font-weight: 600; padding: 2px 8px; border-radius: 99px; background: var(--bg); color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill.open { background: var(--open-bg); color: var(--open); }
+.pill.warn { background: var(--warn-bg); color: var(--warn); }
+.pill.ok { background: var(--ok-bg); color: var(--ok); }
+.last { font-size: .85rem; color: var(--muted); }
+
+/* Panels & forms */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.field { display: grid; gap: 4px; flex: 1 1 180px; min-width: 0; }
+.field.wide { flex-basis: 100%; }
+fieldset.loc-set { border: 0; padding: 0; margin: 0; }
+fieldset.loc-set legend { padding: 0; margin-bottom: 4px; }
+label.lbl.sub { text-transform: none; letter-spacing: 0; font-weight: 500; font-size: .85rem; }
+.lbl { font-size: .75rem; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; color: var(--muted); }
+input[type=text], input[type=date], select, textarea { width: 100%; border: 1px solid var(--line); background: var(--bg); padding: 8px 10px; border-radius: var(--radius); }
+textarea { min-height: 72px; resize: vertical; }
+.checks { display: flex; gap: 18px; flex-wrap: wrap; }
+.check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--ok); }
+.head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; }
+
+/* Rondes */
+.list { display: grid; gap: 8px; }
+.ronde { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 16px; cursor: pointer; text-align: left; width: 100%; }
+.ronde:hover { border-color: var(--muted); }
+.date { font-family: var(--font-display); font-weight: 700; font-size: 1.3rem; font-variant-numeric: tabular-nums; min-width: 7.5em; }
+.ronde .loc { flex: 1 1 160px; min-width: 0; }
+
+/* Observaties */
+.obs { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--open); border-radius: var(--radius); padding: 12px 16px; display: grid; gap: 8px; }
+.obs.s-gemeld { border-left-color: var(--warn); }
+.obs.s-opgelost { border-left-color: var(--ok); }
+.obs-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; justify-content: space-between; }
+.subject { font-weight: 600; }
+.obs p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.obs-bottom { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.filters button[aria-pressed=true] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+
+.empty { border: 1px dashed var(--line); border-radius: var(--radius); padding: 24px 16px; text-align: center; color: var(--muted); }
+.banner { padding: 10px 14px; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn); font-size: .9rem; }
+.toast { position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--fg); color: var(--bg); padding: 8px 16px; border-radius: 99px; font-size: .9rem; }
+@media (prefers-reduced-motion: no-preference) { .site, .ronde, .btn { transition: border-color .15s, filter .15s; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div class="sign" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5c.8 3-1.6 4.6-3 6.6C7.6 11 6.5 12.8 6.5 15a5.5 5.5 0 0 0 11 0c0-2.6-1.4-4.4-2.6-5.7.2 1.6-.4 2.8-1.5 3.3.4-3.6-.6-7.6-1.4-10.1Z" fill="#fff"/></svg>
+    </div>
+    <div>
+      <div class="eyebrow">Brandveiligheid</div>
+      <h1>Veiligheidsrondes</h1>
+    </div>
+    <div id="who" class="who" hidden><span id="who-mail"></span><button class="btn small" id="logout" type="button">Afmelden</button></div>
+  </header>
+  <div id="banner" class="banner" hidden></div>
+  <main id="view"></main>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script>
+const SITES = [
+  { id: "pz-tienen", naam: "Psychiatrisch ziekenhuis Tienen" },
+  { id: "wzc-sint-alexius", naam: "WZC Sint-Alexius" },
+  { id: "wzc-passionisten", naam: "WZC-Passionisten" },
+  { id: "wzc-huize-nazareth", naam: "WZC-Huize Nazareth" },
+  { id: "psc-leuven", naam: "PSC-Leuven" },
+  { id: "hestia", naam: "Hestia" },
+];
+const ONDERWERPEN = ["Branddeur", "Noodverlichting", "Versperring doorgang", "Versperring blusmiddelen", "Rookmelder", "Andere"];
+
+let sb = null, db = null, sessie = null;
+let ready = { rondes: false, obs: false };
+let rondes = [];   // {id, site, datum, aangemaakt}
+let obs = [];      // {id, rondeId, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt}
+let state = { view: "sites", site: null, ronde: null, filter: "alle", editObs: null, confirm: null, editRonde: false };
+
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const today = () => { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+const fmtDate = iso => { if (!iso) return "—"; const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
+const siteNaam = id => (SITES.find(s => s.id === id) || {}).naam || id;
+const locTekst = o => [o.gebouw, o.verdiep ? "verdiep " + o.verdiep : "", o.lokaal].filter(Boolean).join(", ") || o.locatie || "";
+const gebouwen = os => esc([...new Set(os.map(o => o.gebouw).filter(Boolean))].join(", "));
+const status = o => o.opgelost ? "opgelost" : o.gemeld ? "gemeld" : "open";
+
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.hidden = false;
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2200);
+}
+function banner(msg) { const b = $("#banner"); b.textContent = msg || ""; b.hidden = !msg; }
+
+function counts(list) {
+  const c = { open: 0, gemeld: 0, opgelost: 0 };
+  list.forEach(o => c[status(o)]++);
+  return c;
+}
+function pills(c) {
+  let h = "";
+  if (c.open) h += `<span class="pill open">${c.open} open</span>`;
+  if (c.gemeld) h += `<span class="pill warn">${c.gemeld} gemeld</span>`;
+  if (c.opgelost) h += `<span class="pill ok">${c.opgelost} opgelost</span>`;
+  return h;
+}
+
+function go(view, extra = {}) {
+  state = { ...state, view, editObs: null, confirm: null, editRonde: false, ...extra };
+  render();
+  window.scrollTo({ top: 0 });
+}
+
+/* ---------- Views ---------- */
+let lastKey = "";
+function render() {
+  const v = $("#view");
+  const key = state.view + ":" + state.site + ":" + state.ronde;
+  const keep = {};
+  if (key === lastKey) v.querySelectorAll("form input[id], form textarea[id], form select[id]").forEach(el => keep[el.id] = el.type === "checkbox" ? el.checked : el.value);
+  if (state.view === "ronde" && !rondes.find(r => r.id === state.ronde) && ready.rondes) state.view = "site";
+  if (!sessie) { v.innerHTML = viewLogin(); lastKey = ""; return; }
+  if (state.view === "sites") v.innerHTML = viewSites();
+  else if (state.view === "site") v.innerHTML = viewSite();
+  else v.innerHTML = viewRonde();
+  for (const id in keep) { const el = document.getElementById(id); if (el && el.closest("form")) { if (el.type === "checkbox") el.checked = keep[id]; else el.value = keep[id]; } }
+  lastKey = key;
+}
+
+function viewLogin() {
+  if (!sb) return '<div class="empty">Laden…</div>';
+  return `<form class="panel login" id="form-login">
+    <h2>Aanmelden</h2>
+    <p class="muted" style="margin:0">Vul je e-mailadres in. Je krijgt een mail met een link om je aan te melden.</p>
+    <div class="field"><label class="lbl" for="l-mail">E-mailadres</label><input type="text" inputmode="email" autocomplete="email" id="l-mail" required></div>
+    <button class="btn primary" type="submit">Stuur aanmeldlink</button>
+  </form>`;
+}
+
+function viewSites() {
+  const cards = SITES.map(s => {
+    const rs = rondes.filter(r => r.site === s.id);
+    const os = obs.filter(o => o.site === s.id);
+    const last = rs.map(r => r.datum).sort().pop();
+    const c = counts(os);
+    return `<button class="site" data-go-site="${s.id}">
+      <h3>${esc(s.naam)}</h3>
+      <div class="stats"><span class="pill">${rs.length} ${rs.length === 1 ? "ronde" : "rondes"}</span>${pills(c)}</div>
+      <div class="last">${last ? "Laatste ronde " + fmtDate(last) : "Nog geen ronde"}</div>
+    </button>`;
+  }).join("");
+  return `<div style="display:grid;gap:12px"><p class="muted" style="margin:0">Kies een site om een veiligheidsronde te starten of observaties op te volgen.</p><div class="sites">${cards}</div></div>`;
+}
+
+function viewSite() {
+  const s = state.site;
+  const rs = rondes.filter(r => r.site === s).sort((a, b) => (b.datum || "").localeCompare(a.datum || "") || (b.aangemaakt || "").localeCompare(a.aangemaakt || ""));
+  const items = rs.map(r => {
+    const os = obs.filter(o => o.rondeId === r.id);
+    return `<button class="ronde" data-go-ronde="${r.id}">
+      <span class="date">${fmtDate(r.datum)}</span>
+      <span class="loc">${gebouwen(os) || '<span class="muted">Nog geen observaties</span>'}</span>
+      <span class="stats"><span class="pill">${os.length} ${os.length === 1 ? "observatie" : "observaties"}</span>${pills(counts(os))}</span>
+    </button>`;
+  }).join("");
+  const loading = !ready.rondes;
+  return `<div style="display:grid;gap:20px">
+    <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><span>${esc(siteNaam(s))}</span></nav>
+    <h2>${esc(siteNaam(s))}</h2>
+    <form class="panel" id="form-ronde">
+      <h3>Nieuwe veiligheidsronde</h3>
+      <div class="row">
+        <div class="field" style="flex:0 1 180px"><label class="lbl" for="r-datum">Datum</label><input type="date" id="r-datum" required value="${today()}"></div>
+        <button class="btn primary" type="submit">Ronde aanmaken</button>
+      </div>
+    </form>
+    <div style="display:grid;gap:10px">
+      <h3>Rondes</h3>
+      ${loading ? '<div class="empty">Rondes laden…</div>' : items ? `<div class="list">${items}</div>` : '<div class="empty">Nog geen rondes voor deze site. Maak hierboven de eerste aan.</div>'}
+    </div>
+  </div>`;
+}
+
+function obsForm(o) {
+  const e = o || {};
+  const pre = o ? "e" : "o";
+  return `<div class="row">
+      <fieldset class="field wide loc-set"><legend class="lbl">Locatie</legend>
+        <div class="row">
+          <div class="field"><label class="lbl sub" for="${pre}-gebouw">Gebouw</label><input type="text" id="${pre}-gebouw" value="${esc(e.gebouw)}" placeholder="bv. Gebouw B"></div>
+          <div class="field" style="flex-basis:110px"><label class="lbl sub" for="${pre}-verdiep">Verdiep</label><input type="text" id="${pre}-verdiep" value="${esc(e.verdiep)}" placeholder="bv. 2"></div>
+          <div class="field"><label class="lbl sub" for="${pre}-lokaal">Lokaal</label><input type="text" id="${pre}-lokaal" value="${esc(e.lokaal)}" placeholder="bv. B2.14 of gang"></div>
+        </div>
+      </fieldset>
+      <div class="field"><label class="lbl" for="${pre}-onderwerp">Onderwerp</label>
+        <select id="${pre}-onderwerp" required>
+          ${o ? "" : '<option value="" disabled selected>Kies een onderwerp</option>'}
+          ${ONDERWERPEN.map(x => `<option ${e.onderwerp === x ? "selected" : ""}>${x}</option>`).join("")}
+        </select></div>
+      <div class="field wide"><label class="lbl" for="${pre}-omschrijving">Omschrijving</label><textarea id="${pre}-omschrijving" placeholder="Wat stelde je vast?">${esc(e.omschrijving)}</textarea></div>
+    </div>
+    <div class="head">
+      <div class="checks">
+        <label class="check"><input type="checkbox" id="${pre}-gemeld" ${e.gemeld ? "checked" : ""}> Gemeld</label>
+        <label class="check"><input type="checkbox" id="${pre}-opgelost" ${e.opgelost ? "checked" : ""}> Opgelost</label>
+      </div>
+      <div class="actions">
+        ${o ? '<button type="button" class="btn" data-cancel-edit>Annuleren</button>' : ""}
+        <button class="btn primary" type="submit">${o ? "Opslaan" : "Observatie toevoegen"}</button>
+      </div>
+    </div>`;
+}
+
+function viewRonde() {
+  const r = rondes.find(x => x.id === state.ronde);
+  if (!r) return '<div class="empty">Ronde laden…</div>';
+  const all = obs.filter(o => o.rondeId === r.id).sort((a, b) => (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
+  const c = counts(all);
+  const shown = state.filter === "alle" ? all : all.filter(o => status(o) === state.filter);
+  const list = shown.map(o => {
+    if (state.editObs === o.id) return `<form class="panel" data-edit-form="${o.id}"><h3>Observatie bewerken</h3>${obsForm(o)}</form>`;
+    const st = status(o);
+    const conf = state.confirm === "obs:" + o.id;
+    return `<article class="obs s-${st}">
+      <div class="obs-top">
+        <span><span class="subject">${esc(o.onderwerp)}</span>${locTekst(o) ? ` <span class="muted">· ${esc(locTekst(o))}</span>` : ""}</span>
+        <span class="pill ${st === "open" ? "open" : st === "gemeld" ? "warn" : "ok"}">${st === "open" ? "Open" : st === "gemeld" ? "Gemeld" : "Opgelost"}</span>
+      </div>
+      ${o.omschrijving ? `<p>${esc(o.omschrijving)}</p>` : ""}
+      <div class="obs-bottom">
+        <div class="checks">
+          <label class="check"><input type="checkbox" id="g-${o.id}" data-toggle="gemeld" data-id="${o.id}" ${o.gemeld ? "checked" : ""}> Gemeld</label>
+          <label class="check"><input type="checkbox" id="s-${o.id}" data-toggle="opgelost" data-id="${o.id}" ${o.opgelost ? "checked" : ""}> Opgelost</label>
+        </div>
+        <div class="actions">
+          ${conf
+            ? `<span class="muted" style="align-self:center">Verwijderen?</span><button class="btn small danger" data-del-obs="${o.id}">Ja, verwijderen</button><button class="btn small" data-confirm="">Nee</button>`
+            : `<button class="btn small" data-edit-obs="${o.id}">Bewerken</button><button class="btn small danger" data-confirm="obs:${o.id}">Verwijderen</button>`}
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+  const filt = ["alle", "open", "gemeld", "opgelost"].map(f =>
+    `<button class="btn small" aria-pressed="${state.filter === f}" data-filter="${f}">${f[0].toUpperCase() + f.slice(1)}${f === "alle" ? ` (${all.length})` : ` (${c[f]})`}</button>`).join("");
+  const confR = state.confirm === "ronde";
+  const head = state.editRonde
+    ? `<form class="panel" id="form-ronde-edit"><h3>Ronde bewerken</h3><div class="row">
+        <div class="field" style="flex:0 1 180px"><label class="lbl" for="re-datum">Datum</label><input type="date" id="re-datum" required value="${esc(r.datum)}"></div>
+        <div class="actions"><button type="button" class="btn" data-cancel-ronde>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div>
+      </div></form>`
+    : `<div class="head">
+        <div><div class="eyebrow">Veiligheidsronde</div><h2>${fmtDate(r.datum)}</h2></div>
+        <div class="actions">${confR
+          ? `<span class="muted" style="align-self:center">Ronde en ${all.length} observaties verwijderen?</span><button class="btn small danger" data-del-ronde>Ja, verwijderen</button><button class="btn small" data-confirm="">Nee</button>`
+          : `<button class="btn small" data-edit-ronde>Bewerken</button><button class="btn small danger" data-confirm="ronde">Verwijderen</button>`}</div>
+      </div>`;
+  return `<div style="display:grid;gap:20px">
+    <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><button data-go-site="${r.site}">${esc(siteNaam(r.site))}</button><span>/</span><span>${fmtDate(r.datum)}</span></nav>
+    ${head}
+    <form class="panel" id="form-obs"><h3>Observatie toevoegen</h3>${obsForm(null)}</form>
+    <div style="display:grid;gap:10px">
+      <div class="head"><h3>Observaties</h3><div class="filters">${filt}</div></div>
+      ${shown.length ? `<div class="list">${list}</div>` : `<div class="empty">${all.length ? "Geen observaties met deze status." : "Nog geen observaties in deze ronde. Voeg hierboven de eerste toe."}</div>`}
+    </div>
+  </div>`;
+}
+
+/* ---------- Opslag (Supabase) ---------- */
+const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
+  onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt });
+
+async function laadAlles() {
+  const [r, o] = await Promise.all([
+    sb.from("rondes").select("*"),
+    sb.from("observaties").select("*"),
+  ]);
+  if (r.error || o.error) { banner("De gegevens konden niet geladen worden. Heb je toegang gekregen? Vraag het aan de beheerder."); return; }
+  banner("");
+  rondes = r.data.map(fromRow); obs = o.data.map(fromRow);
+  ready.rondes = ready.obs = true;
+  renderSafe();
+}
+
+async function write(fn, okMsg) {
+  try {
+    const { error } = await fn();
+    if (error) throw error;
+    if (okMsg) toast(okMsg);
+    laadAlles();
+    return true;
+  } catch (e) {
+    console.error(e);
+    toast(e && (e.code === "42501" || /row-level security/i.test(e.message || "")) ? "Je hebt geen toegang om dit op te slaan." : "Opslaan mislukt. Controleer je verbinding en probeer opnieuw.");
+    return false;
+  }
+}
+
+function readObsForm(pre) {
+  return {
+    gebouw: $(`#${pre}-gebouw`).value.trim(),
+    verdiep: $(`#${pre}-verdiep`).value.trim(),
+    lokaal: $(`#${pre}-lokaal`).value.trim(),
+    onderwerp: $(`#${pre}-onderwerp`).value,
+    omschrijving: $(`#${pre}-omschrijving`).value.trim(),
+    gemeld: $(`#${pre}-gemeld`).checked,
+    opgelost: $(`#${pre}-opgelost`).checked,
+  };
+}
+
+document.addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target;
+  if (f.id === "form-login") {
+    const email = $("#l-mail").value.trim();
+    if (!email) return;
+    const btn = f.querySelector("button"); btn.disabled = true;
+    const { error } = await sb.auth.signInWithOtp({ email, options: { emailRedirectTo: location.origin + location.pathname, shouldCreateUser: true } });
+    btn.disabled = false;
+    if (error) toast("Versturen mislukt: " + error.message);
+    else f.innerHTML = `<h2>Kijk in je mailbox</h2><p style="margin:0">We stuurden een aanmeldlink naar <strong>${esc(email)}</strong>. Open die link op dit toestel.</p>`;
+  } else if (f.id === "form-ronde") {
+    const datum = $("#r-datum").value;
+    if (!datum) return;
+    const id = crypto.randomUUID();
+    const ok = await write(() => sb.from("rondes").insert({ id, site: state.site, datum }), "Ronde aangemaakt");
+    if (ok) { rondes = [...rondes, { id, site: state.site, datum, aangemaakt: new Date().toISOString() }]; go("ronde", { ronde: id, filter: "alle" }); }
+  } else if (f.id === "form-obs") {
+    const d = readObsForm("o");
+    if (!d.onderwerp) { $("#o-onderwerp").focus(); toast("Kies een onderwerp"); return; }
+    const r = rondes.find(x => x.id === state.ronde);
+    const ok = await write(() => sb.from("observaties").insert({ ...d, ronde_id: r.id, site: r.site }), "Observatie toegevoegd");
+    if (ok) { f.reset(); render(); }
+  } else if (f.dataset.editForm) {
+    const id = f.dataset.editForm, d = readObsForm("e");
+    const ok = await write(() => sb.from("observaties").update(d).eq("id", id), "Opgeslagen");
+    if (ok) { state.editObs = null; render(); }
+  } else if (f.id === "form-ronde-edit") {
+    const datum = $("#re-datum").value;
+    const ok = await write(() => sb.from("rondes").update({ datum }).eq("id", state.ronde), "Opgeslagen");
+    if (ok) { state.editRonde = false; render(); }
+  }
+});
+
+document.addEventListener("change", async e => {
+  const t = e.target;
+  if (!t.dataset.toggle) return;
+  const ok = await write(() => sb.from("observaties").update({ [t.dataset.toggle]: t.checked }).eq("id", t.dataset.id));
+  if (!ok) t.checked = !t.checked;
+});
+
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button");
+  if (!b) return;
+  const d = b.dataset;
+  if (b.id === "logout") { await sb.auth.signOut(); return; }
+  if ("goSites" in d) go("sites");
+  else if (d.goSite) go("site", { site: d.goSite });
+  else if (d.goRonde) go("ronde", { ronde: d.goRonde, filter: "alle" });
+  else if (d.filter) { state.filter = d.filter; render(); }
+  else if ("confirm" in d) { state.confirm = d.confirm || null; render(); }
+  else if (d.editObs) { lastKey = ""; state.editObs = d.editObs; state.confirm = null; render(); }
+  else if ("cancelEdit" in d) { state.editObs = null; render(); }
+  else if ("editRonde" in d) { state.editRonde = true; state.confirm = null; render(); }
+  else if ("cancelRonde" in d) { state.editRonde = false; render(); }
+  else if (d.delObs) { if (await write(() => sb.from("observaties").delete().eq("id", d.delObs), "Observatie verwijderd")) { state.confirm = null; render(); } }
+  else if ("delRonde" in d) {
+    const r = rondes.find(x => x.id === state.ronde);
+    // observaties verdwijnen mee (on delete cascade)
+    const ok = await write(() => sb.from("rondes").delete().eq("id", r.id), "Ronde verwijderd");
+    if (ok) go("site", { site: r.site });
+  }
+});
+
+/* ---------- Opstart ---------- */
+let kanaal = null;
+function zetSessie(s) {
+  const was = !!sessie;
+  sessie = s;
+  $("#who").hidden = !s;
+  $("#who-mail").textContent = s ? s.user.email : "";
+  if (s && !was) {
+    laadAlles();
+    kanaal = sb.channel("wijzigingen")
+      .on("postgres_changes", { event: "*", schema: "public", table: "rondes" }, () => laadAlles())
+      .on("postgres_changes", { event: "*", schema: "public", table: "observaties" }, () => laadAlles())
+      .subscribe();
+  }
+  if (!s) { rondes = []; obs = []; ready.rondes = ready.obs = false; if (kanaal) { sb.removeChannel(kanaal); kanaal = null; } }
+  render();
+}
+
+render();
+(async () => {
+  const cfg = window.VEILIGHEIDSRONDES_CONFIG || {};
+  if (!window.supabase || !cfg.supabaseUrl || !cfg.supabaseAnonKey || /VUL_IN/.test(cfg.supabaseUrl + cfg.supabaseAnonKey)) {
+    banner("De app is nog niet gekoppeld aan de database. Vul config.js in (zie README).");
+    $("#view").innerHTML = "";
+    return;
+  }
+  sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+  const { data } = await sb.auth.getSession();
+  zetSessie(data.session);
+  sb.auth.onAuthStateChange((_ev, s) => { if (!!s !== !!sessie) zetSessie(s); else sessie = s; });
+  // Bij terugkeer naar de app (gsm) gegevens verversen.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden && sessie) laadAlles(); });
+})();
+
+// Niet opnieuw tekenen terwijl iemand een formulier invult; dat zou getypte tekst wissen.
+function renderSafe() {
+  const a = document.activeElement;
+  const typing = a && a.matches && a.matches("input[type=text], textarea, select, input[type=date]") && a.value;
+  if (typing) { clearTimeout(renderSafe.t); renderSafe.t = setTimeout(renderSafe, 1500); return; }
+  render();
+}
+</script>
+</body>
+</html>

@@ -1,6 +1,6 @@
 // Gegevens van het Supabase-project (Project Settings > API).
-// De "anon public" sleutel mag publiek staan: wie gegevens mag zien, regelt de database (zie supabase/schema.sql).
+// De publishable/anon sleutel mag publiek staan: wie gegevens mag zien, regelt de database (zie supabase/schema.sql).
 window.VEILIGHEIDSRONDES_CONFIG = {
-  supabaseUrl: "VUL_IN_PROJECT_URL",
-  supabaseAnonKey: "VUL_IN_ANON_KEY",
+  supabaseUrl: "https://pcktbhnsmembhcyqwmaw.supabase.co",
+  supabaseAnonKey: "sb_publishable_aqjAxPyhVAXuVxibpet9Bg_u3itatfc",
 };

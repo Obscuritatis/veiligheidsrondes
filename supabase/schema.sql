@@ -24,9 +24,11 @@ create table if not exists public.observaties (
   omschrijving text default '',
   gemeld boolean not null default false,
   opgelost boolean not null default false,
+  foto text,
   aangemaakt timestamptz not null default now(),
   aangemaakt_door uuid default auth.uid()
 );
+alter table public.observaties add column if not exists foto text;
 create index if not exists observaties_ronde_idx on public.observaties(ronde_id);
 
 -- Enkel e-mailadressen in de tabel "toegang" mogen gegevens zien en wijzigen.
@@ -46,6 +48,23 @@ create policy "rondes voor collega's" on public.rondes
 drop policy if exists "observaties voor collega's" on public.observaties;
 create policy "observaties voor collega's" on public.observaties
   for all to authenticated using (public.heeft_toegang()) with check (public.heeft_toegang());
+
+-- Foto's: privé-bucket, enkel voor e-mailadressen in "toegang".
+insert into storage.buckets (id, name, public) values ('fotos', 'fotos', false)
+on conflict (id) do nothing;
+
+drop policy if exists "fotos lezen" on storage.objects;
+create policy "fotos lezen" on storage.objects for select to authenticated
+  using (bucket_id = 'fotos' and public.heeft_toegang());
+drop policy if exists "fotos toevoegen" on storage.objects;
+create policy "fotos toevoegen" on storage.objects for insert to authenticated
+  with check (bucket_id = 'fotos' and public.heeft_toegang());
+drop policy if exists "fotos wijzigen" on storage.objects;
+create policy "fotos wijzigen" on storage.objects for update to authenticated
+  using (bucket_id = 'fotos' and public.heeft_toegang());
+drop policy if exists "fotos verwijderen" on storage.objects;
+create policy "fotos verwijderen" on storage.objects for delete to authenticated
+  using (bucket_id = 'fotos' and public.heeft_toegang());
 
 -- Live bijwerken wanneer een collega iets wijzigt.
 do $$ begin

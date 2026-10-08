@@ -42,6 +42,8 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
+img { max-width: 100%; }
 body { margin: 0; background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5; }
 .wrap { max-width: 920px; margin: 0 auto; padding: 24px 16px 64px; display: grid; gap: 24px; }
 h1, h2, h3 { font-family: var(--font-display); font-weight: 700; letter-spacing: .01em; margin: 0; text-wrap: balance; line-height: 1.1; }
@@ -109,6 +111,13 @@ textarea { min-height: 72px; resize: vertical; }
 .obs-top { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; justify-content: space-between; }
 .subject { font-weight: 600; }
 .obs p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.foto-veld { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.foto-veld input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.foto-veld label.btn { cursor: pointer; }
+.duim { width: 96px; height: 72px; object-fit: cover; border-radius: 4px; border: 1px solid var(--line); background: var(--bg); display: block; }
+button.duim-knop { padding: 0; border: 0; background: none; cursor: zoom-in; justify-self: start; }
+.groot { position: fixed; inset: 0; z-index: 10; background: rgba(0,0,0,.85); display: grid; place-items: center; padding: calc(16px + env(safe-area-inset-top, 0px)) 16px calc(16px + env(safe-area-inset-bottom, 0px)); cursor: zoom-out; }
+.groot img { max-width: 100%; max-height: 100%; border-radius: 4px; }
 .obs-bottom { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
 .actions { display: flex; gap: 6px; flex-wrap: wrap; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
@@ -197,7 +206,7 @@ function render() {
   const v = $("#view");
   const key = state.view + ":" + state.site + ":" + state.ronde;
   const keep = {};
-  if (key === lastKey) v.querySelectorAll("form input[id], form textarea[id], form select[id]").forEach(el => keep[el.id] = el.type === "checkbox" ? el.checked : el.value);
+  if (key === lastKey) v.querySelectorAll("form input[id]:not([type=file]), form textarea[id], form select[id]").forEach(el => keep[el.id] = el.type === "checkbox" ? el.checked : el.value);
   if (state.view === "ronde" && !rondes.find(r => r.id === state.ronde) && ready.rondes) state.view = "site";
   if (!sessie) { v.innerHTML = viewLogin(); lastKey = ""; return; }
   if (state.view === "sites") v.innerHTML = viewSites();
@@ -205,6 +214,7 @@ function render() {
   else v.innerHTML = viewRonde();
   for (const id in keep) { const el = document.getElementById(id); if (el && el.closest("form")) { if (el.type === "checkbox") el.checked = keep[id]; else el.value = keep[id]; } }
   lastKey = key;
+  toonFotos();
 }
 
 function viewLogin() {
@@ -280,6 +290,14 @@ function obsForm(o) {
           ${ONDERWERPEN.map(x => `<option ${e.onderwerp === x ? "selected" : ""}>${x}</option>`).join("")}
         </select></div>
       <div class="field wide"><label class="lbl" for="${pre}-omschrijving">Omschrijving</label><textarea id="${pre}-omschrijving" placeholder="Wat stelde je vast?">${esc(e.omschrijving)}</textarea></div>
+      <div class="field wide"><span class="lbl">Foto</span>
+        <div class="foto-veld">
+          ${fotoVoorbeeld(pre, e)}
+          <input type="file" accept="image/*" capture="environment" id="${pre}-foto" data-foto-input="${pre}">
+          <label class="btn" for="${pre}-foto">${heeftFoto(pre, e) ? "Andere foto" : "Foto nemen"}</label>
+          ${heeftFoto(pre, e) ? `<button type="button" class="btn danger" data-foto-weg="${pre}">Foto verwijderen</button>` : ""}
+        </div>
+      </div>
     </div>
     <div class="head">
       <div class="checks">
@@ -309,6 +327,7 @@ function viewRonde() {
         <span class="pill ${st === "open" ? "open" : st === "gemeld" ? "warn" : "ok"}">${st === "open" ? "Open" : st === "gemeld" ? "Gemeld" : "Opgelost"}</span>
       </div>
       ${o.omschrijving ? `<p>${esc(o.omschrijving)}</p>` : ""}
+      ${o.foto ? `<button type="button" class="duim-knop" data-groot="${esc(o.foto)}" aria-label="Foto vergroten"><img class="duim" data-foto="${esc(o.foto)}" alt="Foto bij observatie"></button>` : ""}
       <div class="obs-bottom">
         <div class="checks">
           <label class="check"><input type="checkbox" id="g-${o.id}" data-toggle="gemeld" data-id="${o.id}" ${o.gemeld ? "checked" : ""}> Gemeld</label>
@@ -355,7 +374,7 @@ function leesLokaal() {
   return { rondes: [], observaties: [] };
 }
 function schrijfLokaal(d) { localStorage.setItem(LOKAAL_KEY, JSON.stringify(d)); }
-const OBS_STANDAARD = { gebouw: "", verdiep: "", lokaal: "", omschrijving: "", gemeld: false, opgelost: false };
+const OBS_STANDAARD = { gebouw: "", verdiep: "", lokaal: "", omschrijving: "", gemeld: false, opgelost: false, foto: null };
 function lokaleClient() {
   const ok = { error: null };
   const doe = fn => { try { fn(); return ok; } catch (e) { return { error: e }; } };
@@ -389,8 +408,15 @@ function lokaleVoorraad() { if (lokaal) return null; let d; try { d = leesLokaal
 async function zetLokaalOver() {
   const d = lokaleVoorraad(); if (!d) return;
   const rondesRijen = d.rondes.map(({ id, site, datum, aangemaakt }) => ({ id, site, datum, aangemaakt }));
-  const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt }) =>
-    ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt }));
+  const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto }) =>
+    ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto: foto || null }));
+  for (const o of obsRijen) {
+    if (!o.foto) continue;
+    const blob = await idb("get", o.foto).catch(() => null);
+    if (!blob) { o.foto = null; continue; }
+    const up = await sb.storage.from("fotos").upload(o.foto, blob, { upsert: true, contentType: "image/jpeg" });
+    if (up.error) { console.error(up.error); toast("Een foto kon niet overgezet worden. Probeer opnieuw."); return; }
+  }
   let r = await sb.from("rondes").upsert(rondesRijen);
   if (!r.error && obsRijen.length) r = await sb.from("observaties").upsert(obsRijen);
   if (r.error) { console.error(r.error); toast("Overzetten mislukt. Heb je toegang gekregen?"); return; }
@@ -399,9 +425,74 @@ async function zetLokaalOver() {
   laadAlles();
 }
 
+/* ---------- Foto's ---------- */
+// Lokaal: IndexedDB op dit toestel. Gedeeld: Supabase Storage (bucket "fotos").
+function idb(actie, sleutel, waarde) {
+  return new Promise((ok, nok) => {
+    const req = indexedDB.open("veiligheidsrondes", 1);
+    req.onupgradeneeded = () => req.result.createObjectStore("fotos");
+    req.onerror = () => nok(req.error);
+    req.onsuccess = () => {
+      const tx = req.result.transaction("fotos", actie === "get" ? "readonly" : "readwrite");
+      const st = tx.objectStore("fotos");
+      const r = actie === "get" ? st.get(sleutel) : actie === "put" ? st.put(waarde, sleutel) : st.delete(sleutel);
+      tx.oncomplete = () => ok(r.result);
+      tx.onerror = () => nok(tx.error);
+    };
+  });
+}
+const fotoUrls = new Map();
+async function fotoUrl(pad) {
+  if (fotoUrls.has(pad)) return fotoUrls.get(pad);
+  let url = null;
+  if (lokaal) { const blob = await idb("get", pad).catch(() => null); if (blob) url = URL.createObjectURL(blob); }
+  else { const { data } = await sb.storage.from("fotos").createSignedUrl(pad, 60 * 60 * 12); url = data && data.signedUrl; }
+  if (url) fotoUrls.set(pad, url);
+  return url;
+}
+async function bewaarFoto(pad, blob) {
+  if (lokaal) { await idb("put", pad, blob); return { error: null }; }
+  return sb.storage.from("fotos").upload(pad, blob, { upsert: true, contentType: "image/jpeg" });
+}
+async function wisFoto(pad) {
+  if (!pad) return;
+  fotoUrls.delete(pad);
+  try { if (lokaal) await idb("del", pad); else await sb.storage.from("fotos").remove([pad]); } catch (e) { console.error(e); }
+}
+function toonFotos() {
+  document.querySelectorAll("img[data-foto]").forEach(async img => {
+    const url = await fotoUrl(img.dataset.foto);
+    if (url && img.isConnected) img.src = url;
+  });
+}
+// Foto verkleinen tot max. 1600 px, JPEG: kleiner bestand, sneller opladen.
+async function verklein(file) {
+  const bron = await createImageBitmap(file).catch(() => null);
+  if (!bron) return file;
+  const k = Math.min(1, 1600 / Math.max(bron.width, bron.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bron.width * k); c.height = Math.round(bron.height * k);
+  c.getContext("2d").drawImage(bron, 0, 0, c.width, c.height);
+  return new Promise(ok => c.toBlob(b => ok(b || file), "image/jpeg", 0.8));
+}
+// Gekozen maar nog niet opgeslagen foto's per formulier ("o" = nieuw, "e" = bewerken).
+const fotoKeuze = { o: null, e: null };   // Blob
+const fotoPreview = { o: null, e: null }; // object-URL
+const fotoWeg = { o: false, e: false };
+function heeftFoto(pre, e) { return !!fotoKeuze[pre] || (!!e.foto && !fotoWeg[pre]); }
+function fotoVoorbeeld(pre, e) {
+  if (fotoPreview[pre]) return `<img class="duim" src="${fotoPreview[pre]}" alt="Gekozen foto">`;
+  if (e.foto && !fotoWeg[pre]) return `<img class="duim" data-foto="${esc(e.foto)}" alt="Huidige foto">`;
+  return "";
+}
+function wisKeuze(pre) {
+  if (fotoPreview[pre]) URL.revokeObjectURL(fotoPreview[pre]);
+  fotoKeuze[pre] = null; fotoPreview[pre] = null; fotoWeg[pre] = false;
+}
+
 /* ---------- Opslag (Supabase) ---------- */
 const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
-  onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt });
+  onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt, foto: r.foto || null });
 
 async function laadAlles() {
   const [r, o] = await Promise.all([
@@ -462,12 +553,27 @@ document.addEventListener("submit", async e => {
     const d = readObsForm("o");
     if (!d.onderwerp) { $("#o-onderwerp").focus(); toast("Kies een onderwerp"); return; }
     const r = rondes.find(x => x.id === state.ronde);
-    const ok = await write(() => sb.from("observaties").insert({ ...d, ronde_id: r.id, site: r.site }), "Observatie toegevoegd");
-    if (ok) { f.reset(); render(); }
+    const id = crypto.randomUUID();
+    const knop = f.querySelector("button[type=submit]"); knop.disabled = true;
+    let foto = null;
+    if (fotoKeuze.o) {
+      foto = `${r.site}/${id}-${Date.now()}.jpg`;
+      const up = await bewaarFoto(foto, fotoKeuze.o).catch(err => ({ error: err }));
+      if (up.error) { console.error(up.error); knop.disabled = false; toast("De foto kon niet opgeslagen worden. Probeer opnieuw."); return; }
+    }
+    const ok = await write(() => sb.from("observaties").insert({ ...d, id, foto, ronde_id: r.id, site: r.site }), "Observatie toegevoegd");
+    knop.disabled = false;
+    if (ok) { f.reset(); wisKeuze("o"); lastKey = ""; render(); }
   } else if (f.dataset.editForm) {
     const id = f.dataset.editForm, d = readObsForm("e");
+    const oud = obs.find(o => o.id === id) || {};
+    if (fotoKeuze.e) {
+      d.foto = `${oud.site}/${id}-${Date.now()}.jpg`;
+      const up = await bewaarFoto(d.foto, fotoKeuze.e).catch(err => ({ error: err }));
+      if (up.error) { console.error(up.error); toast("De foto kon niet opgeslagen worden. Probeer opnieuw."); return; }
+    } else if (fotoWeg.e) d.foto = null;
     const ok = await write(() => sb.from("observaties").update(d).eq("id", id), "Opgeslagen");
-    if (ok) { state.editObs = null; render(); }
+    if (ok) { if ("foto" in d && oud.foto) wisFoto(oud.foto); wisKeuze("e"); state.editObs = null; render(); }
   } else if (f.id === "form-ronde-edit") {
     const datum = $("#re-datum").value;
     const ok = await write(() => sb.from("rondes").update({ datum }).eq("id", state.ronde), "Opgeslagen");
@@ -477,6 +583,15 @@ document.addEventListener("submit", async e => {
 
 document.addEventListener("change", async e => {
   const t = e.target;
+  if (t.dataset.fotoInput) {
+    const pre = t.dataset.fotoInput, file = t.files && t.files[0];
+    if (!file) return;
+    const blob = await verklein(file);
+    wisKeuze(pre);
+    fotoKeuze[pre] = blob; fotoPreview[pre] = URL.createObjectURL(blob);
+    render();
+    return;
+  }
   if (!t.dataset.toggle) return;
   const ok = await write(() => sb.from("observaties").update({ [t.dataset.toggle]: t.checked }).eq("id", t.dataset.id));
   if (!ok) t.checked = !t.checked;
@@ -488,21 +603,32 @@ document.addEventListener("click", async e => {
   const d = b.dataset;
   if (b.id === "logout") { await sb.auth.signOut(); return; }
   if ("overzetten" in d) { b.disabled = true; await zetLokaalOver(); return; }
+  if (d.fotoWeg) { const pre = d.fotoWeg; const had = !!fotoKeuze[pre]; wisKeuze(pre); if (!had || pre === "e") fotoWeg[pre] = !had; render(); return; }
+  if (d.groot) {
+    const url = await fotoUrl(d.groot); if (!url) return;
+    const ov = document.createElement("div"); ov.className = "groot"; ov.innerHTML = `<img alt="Foto bij observatie">`;
+    ov.querySelector("img").src = url; ov.addEventListener("click", () => ov.remove()); document.body.appendChild(ov);
+    return;
+  }
   if ("goSites" in d) go("sites");
   else if (d.goSite) go("site", { site: d.goSite });
   else if (d.goRonde) go("ronde", { ronde: d.goRonde, filter: "alle" });
   else if (d.filter) { state.filter = d.filter; render(); }
   else if ("confirm" in d) { state.confirm = d.confirm || null; render(); }
-  else if (d.editObs) { lastKey = ""; state.editObs = d.editObs; state.confirm = null; render(); }
-  else if ("cancelEdit" in d) { state.editObs = null; render(); }
+  else if (d.editObs) { lastKey = ""; wisKeuze("e"); state.editObs = d.editObs; state.confirm = null; render(); }
+  else if ("cancelEdit" in d) { wisKeuze("e"); state.editObs = null; render(); }
   else if ("editRonde" in d) { state.editRonde = true; state.confirm = null; render(); }
   else if ("cancelRonde" in d) { state.editRonde = false; render(); }
-  else if (d.delObs) { if (await write(() => sb.from("observaties").delete().eq("id", d.delObs), "Observatie verwijderd")) { state.confirm = null; render(); } }
+  else if (d.delObs) {
+    const foto = (obs.find(o => o.id === d.delObs) || {}).foto;
+    if (await write(() => sb.from("observaties").delete().eq("id", d.delObs), "Observatie verwijderd")) { wisFoto(foto); state.confirm = null; render(); }
+  }
   else if ("delRonde" in d) {
     const r = rondes.find(x => x.id === state.ronde);
     // observaties verdwijnen mee (on delete cascade)
+    const fotos = obs.filter(o => o.rondeId === r.id && o.foto).map(o => o.foto);
     const ok = await write(() => sb.from("rondes").delete().eq("id", r.id), "Ronde verwijderd");
-    if (ok) go("site", { site: r.site });
+    if (ok) { fotos.forEach(wisFoto); go("site", { site: r.site }); }
   }
 });
 

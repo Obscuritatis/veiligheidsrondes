@@ -1,7 +1,7 @@
 # Veiligheidsrondes
 
 Webapp om per site brandveiligheidsrondes bij te houden: een ronde per datum, met observaties
-(gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost).
+(gebouw, verdiep, lokaal, onderwerp, omschrijving, foto, gemeld, opgelost).
 
 Sites: Psychiatrisch ziekenhuis Tienen, WZC Sint-Alexius, WZC-Passionisten, WZC-Huize Nazareth, PSC-Leuven en Hestia.
 

@@ -1,0 +1,17 @@
+{
+  "id": "/veiligheidsrondes/",
+  "name": "Veiligheidsrondes",
+  "short_name": "Rondes",
+  "description": "Brandveiligheidsrondes per site met observaties, foto's en Excel-export.",
+  "lang": "nl",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f4",
+  "theme_color": "#c8281e",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -57,6 +57,8 @@ h1 { font-size: 2.2rem; text-transform: uppercase; }
 h2 { font-size: 1.6rem; }
 h3 { font-size: 1.25rem; }
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+#installeer { margin-left: auto; }
+#installeer:not([hidden]) + .who { margin-left: 0; }
 .who { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: .85rem; color: var(--muted); min-width: 0; overflow-wrap: anywhere; }
 .login { max-width: 420px; }
 .sign { width: 40px; height: 40px; flex: none; border-radius: 4px; background: var(--accent); display: grid; place-items: center; }
@@ -149,6 +151,7 @@ button.duim-knop { padding: 0; border: 0; background: none; cursor: zoom-in; jus
       <div class="eyebrow">Brandveiligheid</div>
       <h1>Veiligheidsrondes</h1>
     </div>
+    <button id="installeer" class="btn small" type="button" hidden>Installeer als app</button>
     <div id="who" class="who" hidden><span id="who-mail"></span><button class="btn small" id="logout" type="button">Afmelden</button></div>
   </header>
   <div id="banner" class="banner" hidden></div>
@@ -783,6 +786,16 @@ render();
 })();
 
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+// Eigen installatieknop (Chrome/Edge/Samsung Internet): verschijnt zodra de browser de app installeerbaar vindt.
+let installVraag = null;
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installVraag = e; $("#installeer").hidden = false; });
+window.addEventListener("appinstalled", () => { installVraag = null; $("#installeer").hidden = true; toast("App geïnstalleerd"); });
+$("#installeer").addEventListener("click", async () => {
+  if (!installVraag) return;
+  installVraag.prompt();
+  await installVraag.userChoice.catch(() => {});
+  installVraag = null; $("#installeer").hidden = true;
+});
 
 // Niet opnieuw tekenen terwijl iemand een formulier invult; dat zou getypte tekst wissen.
 function renderSafe() {

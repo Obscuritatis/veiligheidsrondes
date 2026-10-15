@@ -1,7 +1,7 @@
 {
   "id": "/veiligheidsrondes/",
   "name": "Veiligheidsrondes",
-  "short_name": "Rondes",
+  "short_name": "Veiligheidsrondes",
   "description": "Brandveiligheidsrondes per site met observaties, foto's en Excel-export.",
   "lang": "nl",
   "start_url": "./",

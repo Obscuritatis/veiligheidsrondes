@@ -29,3 +29,12 @@ collega's melden zich aan met een link die ze per e-mail krijgen.
 - De gratis aanmeldmails van Supabase zijn beperkt in aantal per uur. Voor een grotere groep stel je
   een eigen mailserver in onder *Authentication > SMTP*.
 - Een gratis Supabase-project wordt gepauzeerd na een week zonder gebruik; je zet het terug aan in het dashboard.
+
+## Beveiliging
+
+- Lettertypes (`fonts/`) en bibliotheken (`vendor/`: supabase-js 2.116.0, ExcelJS 4.4.0) staan op de site zelf;
+  de app maakt enkel verbinding met de eigen site en het Supabase-project.
+- Een Content Security Policy in `index.html` laat alleen code van de site zelf toe. Verandert het
+  Supabase-project, pas dan ook het adres in die regel aan.
+- Wie gegevens mag zien, bepaalt de database (Row Level Security + tabel `toegang`).
+  [`supabase/controle.sql`](supabase/controle.sql) controleert dat, zonder iets te wijzigen.

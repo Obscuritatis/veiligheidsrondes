@@ -23,6 +23,27 @@ const locTekst = o => [o.gebouw, o.verdiep ? "verdiep " + o.verdiep : "", o.loka
 const gebouwen = os => esc([...new Set(os.map(o => o.gebouw).filter(Boolean))].join(", "));
 const status = o => o.opgelost ? "opgelost" : o.gemeld ? "gemeld" : "open";
 
+/* Pictogrammen in de stijl van veiligheidssignalisatie (vaste SVG, geen gebruikersinvoer) */
+const svg = (d, extra = "") => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${d}</svg>`;
+const ICO = {
+  gebouw: svg('<path d="M4 21V5l8-3v19M12 8l8 3v10M2 21h20M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2"/>'),
+  klok: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  excel: svg('<path d="M12 3v12M7 10l5 5 5-5M4 19h16"/>'),
+  Branddeur: svg('<path d="M6 21V3h12v18M3 21h18M14 12h1"/><path d="M9 7h6"/>'),
+  Noodverlichting: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3Z"/>'),
+  "Versperring doorgang": svg('<circle cx="13" cy="4.5" r="1.8"/><path d="m7 21 3-6 3 2v4M10 15l1.5-6 3 2.5H18M11.5 9 8 11v3"/><path d="M19 15v6"/>'),
+  "Versperring blusmiddelen": svg('<path d="M10 8h4a2 2 0 0 1 2 2v11H8V10a2 2 0 0 1 2-2ZM12 8V5M12 5h-3l-3 2M12 5h3"/>'),
+  Rookmelder: svg('<path d="M4 8h16l-2 4H6Z"/><path d="M8 16c1-1 3-1 4 0s3 1 4 0M7 20c1-1 3-1 4 0s3 1 4 0"/>'),
+  "Elektrische toestellen": svg('<path d="M13 2 5 14h6l-1 8 8-12h-6Z"/>'),
+  Andere: svg('<path d="M12 3 2 21h20Z"/><path d="M12 10v5M12 18h.01"/>'),
+};
+const PICTO_KLEUR = { Noodverlichting: "p-groen", "Versperring doorgang": "p-groen", "Elektrische toestellen": "p-geel", Andere: "p-grijs" };
+const picto = onderwerp => `<span class="picto ${PICTO_KLEUR[onderwerp] || ""}">${ICO[onderwerp] || ICO.Andere}</span>`;
+const MAANDEN = ["jan", "feb", "mrt", "apr", "mei", "jun", "jul", "aug", "sep", "okt", "nov", "dec"];
+const stempel = iso => { if (!iso) return ""; const [y, m, d] = String(iso).split("-"); return `<span class="stempel" aria-hidden="true"><b>${esc(d)}</b><span>${esc(MAANDEN[+m - 1] || m)} ${esc(y)}</span></span>`; };
+const voortgang = c => { const t = c.open + c.gemeld + c.opgelost; if (!t) return ""; const w = n => (n / t * 100).toFixed(1) + "%";
+  return `<span class="voortgang" role="img" aria-label="${c.opgelost} van ${t} opgelost"><i class="v-ok" style="width:${w(c.opgelost)}"></i><i class="v-warn" style="width:${w(c.gemeld)}"></i><i class="v-open" style="width:${w(c.open)}"></i></span>`; };
+
 function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 2200);
@@ -82,14 +103,16 @@ function viewSites() {
     const last = rs.map(r => r.datum).sort().pop();
     const c = counts(os);
     return `<button class="site" data-go-site="${esc(s.id)}">
-      <h3>${esc(s.naam)}</h3>
-      <div class="stats"><span class="pill">${rs.length} ${rs.length === 1 ? "ronde" : "rondes"}</span>${pills(c)}</div>
-      <div class="last">${last ? "Laatste ronde " + fmtDate(last) : "Nog geen ronde"}</div>
+      <span class="site-kop"><span class="ico">${ICO.gebouw}</span><h3>${esc(s.naam)}</h3></span>
+      <span class="site-voet">
+        <span class="stats"><span class="pill">${rs.length} ${rs.length === 1 ? "ronde" : "rondes"}</span>${pills(c)}</span>
+        <span class="last">${ICO.klok}${last ? "Laatste ronde " + fmtDate(last) : "Nog geen ronde"}</span>
+      </span>
     </button>`;
   }).join("");
   const v = lokaleVoorraad();
   const over = v ? `<div class="panel"><h3>Gegevens op dit toestel</h3><p style="margin:0">Op dit toestel staan nog ${v.rondes.length} rondes en ${v.observaties.length} observaties die niet gedeeld zijn.</p><div><button class="btn primary" data-overzetten>Zet ze over naar de gedeelde opslag</button></div></div>` : "";
-  return `<div style="display:grid;gap:12px">${over}<p class="muted" style="margin:0">Kies een site om een veiligheidsronde te starten of observaties op te volgen.</p><div class="sites">${cards}</div></div>`;
+  return `<div style="display:grid;gap:14px">${over}<h2 class="sectie-kop">Kies je site</h2><p class="intro">Start een veiligheidsronde of volg openstaande observaties op.</p><div class="sites">${cards}</div></div>`;
 }
 
 function viewSite() {
@@ -98,16 +121,19 @@ function viewSite() {
   const items = rs.map(r => {
     const os = obs.filter(o => o.rondeId === r.id);
     return `<button class="ronde" data-go-ronde="${esc(r.id)}">
-      <span class="date">${fmtDate(r.datum)}</span>
-      <span class="loc">${gebouwen(os) || '<span class="muted">Nog geen observaties</span>'}</span>
-      <span class="stats"><span class="pill">${os.length} ${os.length === 1 ? "observatie" : "observaties"}</span>${pills(counts(os))}</span>
+      ${stempel(r.datum)}
+      <span class="ronde-info">
+        <span class="loc">${gebouwen(os) || '<span class="muted">Nog geen observaties</span>'}</span>
+        <span class="stats"><span class="pill">${os.length} ${os.length === 1 ? "observatie" : "observaties"}</span>${pills(counts(os))}</span>
+        ${voortgang(counts(os))}
+      </span>
     </button>`;
   }).join("");
   const loading = !ready.rondes;
   return `<div style="display:grid;gap:20px">
     <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><span>${esc(siteNaam(s))}</span></nav>
-    <h2>${esc(siteNaam(s))}</h2>
-    <form class="panel" id="form-ronde">
+    <div><div class="eyebrow">Site</div><h2>${esc(siteNaam(s))}</h2></div>
+    <form class="panel nieuw" id="form-ronde">
       <h3>Nieuwe veiligheidsronde</h3>
       <div class="row">
         <div class="field" style="flex:0 1 180px"><label class="lbl" for="r-datum">Datum</label><input type="date" id="r-datum" required value="${today()}"></div>
@@ -115,7 +141,7 @@ function viewSite() {
       </div>
     </form>
     <div style="display:grid;gap:10px">
-      <h3>Rondes</h3>
+      <h3 class="sectie-kop">Logboek rondes</h3>
       ${loading ? '<div class="empty">Rondes laden…</div>' : items ? `<div class="list">${items}</div>` : '<div class="empty">Nog geen rondes voor deze site. Maak hierboven de eerste aan.</div>'}
     </div>
   </div>`;
@@ -171,8 +197,8 @@ function viewRonde() {
     const conf = state.confirm === "obs:" + o.id;
     return `<article class="obs s-${st}">
       <div class="obs-top">
-        <span><span class="subject">${esc(o.onderwerp)}</span>${locTekst(o) ? ` <span class="muted">· ${esc(locTekst(o))}</span>` : ""}</span>
-        <span class="pill ${st === "open" ? "open" : st === "gemeld" ? "warn" : "ok"}">${st === "open" ? "Open" : st === "gemeld" ? "Gemeld" : "Opgelost"}</span>
+        <span class="obs-titel">${picto(o.onderwerp)}<span><span class="subject">${esc(o.onderwerp)}</span>${locTekst(o) ? `<span class="obs-loc">${esc(locTekst(o))}</span>` : ""}</span></span>
+        <span class="badge ${st === "open" ? "open" : st === "gemeld" ? "warn" : "ok"}">${st === "open" ? "Open" : st === "gemeld" ? "Gemeld" : "Opgelost"}</span>
       </div>
       ${o.omschrijving ? `<p>${esc(o.omschrijving)}</p>` : ""}
       ${o.foto ? `<button type="button" class="duim-knop" data-groot="${esc(o.foto)}" aria-label="Foto vergroten"><img class="duim" data-foto="${esc(o.foto)}" alt="Foto bij observatie"></button>` : ""}
@@ -197,18 +223,26 @@ function viewRonde() {
         <div class="field" style="flex:0 1 180px"><label class="lbl" for="re-datum">Datum</label><input type="date" id="re-datum" required value="${esc(r.datum)}"></div>
         <div class="actions"><button type="button" class="btn" data-cancel-ronde>Annuleren</button><button class="btn primary" type="submit">Opslaan</button></div>
       </div></form>`
-    : `<div class="head">
-        <div><div class="eyebrow">Veiligheidsronde</div><h2>${fmtDate(r.datum)}</h2></div>
+    : `<section class="fiche"><div class="fiche-band" aria-hidden="true"></div><div class="fiche-in"><div class="head">
+        <div><div class="eyebrow">Veiligheidsronde · ${esc(siteNaam(r.site))}</div><h2>${fmtDate(r.datum)}</h2></div>
         <div class="actions">${confR
           ? `<span class="muted" style="align-self:center">Ronde en ${all.length} observaties verwijderen?</span><button class="btn small danger" data-del-ronde>Ja, verwijderen</button><button class="btn small" data-confirm="">Nee</button>`
-          : `<button class="btn small" data-export>Excel-export</button><button class="btn small" data-edit-ronde>Bewerken</button><button class="btn small danger" data-confirm="ronde">Verwijderen</button>`}</div>
-      </div>`;
+          : `<button class="btn small" data-export>${ICO.excel}Excel-export</button><button class="btn small" data-edit-ronde>Bewerken</button><button class="btn small danger" data-confirm="ronde">Verwijderen</button>`}</div>
+      </div>
+      <div class="tellers">
+        <div class="teller"><b>${all.length}</b><span>Observaties</span></div>
+        <div class="teller t-open"><b>${c.open}</b><span>Open</span></div>
+        <div class="teller t-warn"><b>${c.gemeld}</b><span>Gemeld</span></div>
+        <div class="teller t-ok"><b>${c.opgelost}</b><span>Opgelost</span></div>
+      </div>
+      ${voortgang(c)}
+    </div></section>`;
   return `<div style="display:grid;gap:20px">
     <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><button data-go-site="${esc(r.site)}">${esc(siteNaam(r.site))}</button><span>/</span><span>${fmtDate(r.datum)}</span></nav>
     ${head}
-    <form class="panel" id="form-obs"><h3>Observatie toevoegen</h3>${obsForm(null)}</form>
+    <form class="panel nieuw" id="form-obs"><h3>Nieuwe observatie</h3>${obsForm(null)}</form>
     <div style="display:grid;gap:10px">
-      <div class="head"><h3>Observaties</h3><div class="filters">${filt}</div></div>
+      <div class="head"><h3 class="sectie-kop">Vaststellingen</h3><div class="filters">${filt}</div></div>
       ${shown.length ? `<div class="list">${list}</div>` : `<div class="empty">${all.length ? "Geen observaties met deze status." : "Nog geen observaties in deze ronde. Voeg hierboven de eerste toe."}</div>`}
     </div>
   </div>`;
@@ -370,50 +404,101 @@ async function exporteerRonde(rondeId) {
   try { ExcelJS = await laadExcelJS(); } catch { toast("Excel-export kon niet geladen worden. Controleer je internetverbinding."); return; }
   const lijst = obs.filter(o => o.rondeId === r.id).sort((a, b) => (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
   const c = counts(lijst);
-  const STATUS = { open: ["Open", "FFFBE6E3", "FFB0261C"], gemeld: ["Gemeld", "FFFBEFD9", "FF9A5B00"], opgelost: ["Opgelost", "FFE3F2EA", "FF1D7A4C"] };
+  const STATUS = { open: ["OPEN", "FFFBE4E1", "FFB3231A"], gemeld: ["GEMELD", "FFFDF0CC", "FF8F5A00"], opgelost: ["OPGELOST", "FFE1F1E7", "FF13804A"] };
+  const ROOD = "FFC8261C", ZWART = "FF1B1F1D", GEEL = "FFF5C400", GRIJS = "FF5B625E", LIJN = "FFD3D7D3", ZEBRA = "FFF6F7F5";
+  const vul = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+  const lijn = argb => ({ style: "thin", color: { argb } });
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Veiligheidsrondes"; wb.created = new Date();
-  const ws = wb.addWorksheet("Ronde", { pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9 } });
+  const ws = wb.addWorksheet("Ronde", {
+    properties: { tabColor: { argb: ROOD } },
+    views: [{ showGridLines: false }],
+    pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9,
+      margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } },
+    headerFooter: {
+      oddHeader: `&L&"-,Bold"&KC8261CVEILIGHEIDSRONDE BRANDVEILIGHEID&R${siteNaam(r.site).replace(/&/g, "&&")} · ${fmtDate(r.datum)}`,
+      oddFooter: "&LVeiligheidsrondes&RPagina &P van &N",
+    },
+  });
   ws.columns = [
     { key: "nr", width: 5 }, { key: "gebouw", width: 14 }, { key: "verdiep", width: 9 }, { key: "lokaal", width: 14 },
     { key: "onderwerp", width: 22 }, { key: "omschrijving", width: 45 }, { key: "gemeld", width: 9 }, { key: "opgelost", width: 10 },
-    { key: "status", width: 11 }, { key: "foto", width: 36 },
+    { key: "status", width: 12 }, { key: "foto", width: 36 },
   ];
+
+  // Rood bord met titel, daaronder een geel-zwarte markeerband
   ws.mergeCells("A1:J1");
-  ws.getCell("A1").value = "Veiligheidsronde brandveiligheid";
-  ws.getCell("A1").font = { bold: true, size: 16 };
+  const titel = ws.getCell("A1");
+  titel.value = "VEILIGHEIDSRONDE BRANDVEILIGHEID";
+  titel.font = { bold: true, size: 18, color: { argb: "FFFFFFFF" } };
+  titel.fill = vul(ROOD);
+  titel.alignment = { vertical: "middle", indent: 1 };
+  ws.getRow(1).height = 38;
+  for (let k = 1; k <= 10; k++) ws.getRow(2).getCell(k).fill = { type: "pattern", pattern: "darkUp", fgColor: { argb: ZWART }, bgColor: { argb: GEEL } };
+  ws.getRow(2).height = 9;
+
+  // Gegevens van de ronde
   const info = [["Site", siteNaam(r.site)], ["Datum", fmtDate(r.datum)],
     ["Observaties", `${lijst.length} (open: ${c.open}, gemeld: ${c.gemeld}, opgelost: ${c.opgelost})`],
     ["Geëxporteerd op", new Date().toLocaleString("nl-BE")]];
   info.forEach(([k, v], i) => {
-    const rij = ws.getRow(2 + i);
-    rij.getCell(1).value = k; rij.getCell(1).font = { bold: true };
-    ws.mergeCells(2 + i, 1, 2 + i, 2); ws.mergeCells(2 + i, 3, 2 + i, 10);
+    const nr = 4 + i, rij = ws.getRow(nr);
+    ws.mergeCells(nr, 1, nr, 2); ws.mergeCells(nr, 3, nr, 6);
+    rij.getCell(1).value = k.toUpperCase();
+    rij.getCell(1).font = { bold: true, size: 9, color: { argb: GRIJS } };
+    rij.getCell(1).border = { left: { style: "thick", color: { argb: ROOD } } };
     rij.getCell(3).value = v;
+    rij.getCell(3).font = { bold: i < 2, size: i < 2 ? 12 : 11, color: { argb: ZWART } };
+    [1, 3].forEach(k => { rij.getCell(k).alignment = { vertical: "middle", indent: 1 }; });
+    rij.height = 18;
   });
-  const KOP = 7;
+
+  // Tellers als tegels rechts van de gegevens
+  const tegels = [["G", "Open", c.open, STATUS.open], ["H", "Gemeld", c.gemeld, STATUS.gemeld], ["I", "Opgelost", c.opgelost, STATUS.opgelost]];
+  tegels.forEach(([kol, label, n, [, bg, fg]]) => {
+    ws.mergeCells(`${kol}4:${kol}6`);
+    const t = ws.getCell(`${kol}4`);
+    t.value = n; t.font = { bold: true, size: 22, color: { argb: fg } };
+    t.fill = vul(bg); t.alignment = { horizontal: "center", vertical: "middle" };
+    const l = ws.getCell(`${kol}7`);
+    l.value = label.toUpperCase(); l.font = { bold: true, size: 8, color: { argb: fg } };
+    l.fill = vul(bg); l.alignment = { horizontal: "center", vertical: "middle" };
+  });
+
+  // Tabelkop
+  const KOP = 9;
   const kop = ws.getRow(KOP);
   ["Nr", "Gebouw", "Verdiep", "Lokaal", "Onderwerp", "Omschrijving", "Gemeld", "Opgelost", "Status", "Foto"].forEach((t, i) => {
     const cel = kop.getCell(i + 1);
-    cel.value = t; cel.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1D2220" } };
-    cel.alignment = { vertical: "middle" };
+    cel.value = t.toUpperCase(); cel.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
+    cel.fill = vul(ZWART);
+    cel.alignment = { vertical: "middle", horizontal: i === 0 || (i >= 6 && i <= 8) ? "center" : "left", indent: i === 0 || (i >= 6 && i <= 8) ? 0 : 1 };
+    cel.border = { bottom: { style: "thick", color: { argb: ROOD } } };
   });
-  kop.height = 20;
-  ws.views = [{ state: "frozen", ySplit: KOP }];
+  kop.height = 24;
+  ws.views = [{ state: "frozen", ySplit: KOP, showGridLines: false }];
   ws.pageSetup.printTitlesRow = `${KOP}:${KOP}`;
-  const rand = { style: "thin", color: { argb: "FFDDE1DE" } };
 
   for (let i = 0; i < lijst.length; i++) {
     const o = lijst[i], st = status(o), rijNr = KOP + 1 + i;
     const rij = ws.getRow(rijNr);
     rij.values = [i + 1, o.gebouw || "", o.verdiep || "", o.lokaal || "", o.onderwerp || "", o.omschrijving || "",
       o.gemeld ? "Ja" : "Nee", o.opgelost ? "Ja" : "Nee", STATUS[st][0], o.foto ? "" : "—"];
-    rij.eachCell({ includeEmpty: true }, cel => { cel.alignment = { vertical: "top", wrapText: true }; cel.border = { top: rand, bottom: rand, left: rand, right: rand }; });
+    rij.eachCell({ includeEmpty: true }, (cel, k) => {
+      const midden = k === 1 || (k >= 7 && k <= 9);
+      cel.alignment = { vertical: "top", wrapText: true, horizontal: midden ? "center" : "left", indent: midden ? 0 : 1 };
+      cel.border = { bottom: lijn(LIJN) };
+      if (i % 2) cel.fill = vul(ZEBRA);
+    });
+    rij.getCell(1).font = { bold: true, color: { argb: GRIJS } };
+    rij.getCell(1).border = { bottom: lijn(LIJN), left: { style: "thick", color: { argb: STATUS[st][2] } } };
+    rij.getCell(5).font = { bold: true };
+    [7, 8].forEach(k => { if (rij.getCell(k).value !== "Nee") rij.getCell(k).font = { bold: true, color: { argb: STATUS.opgelost[2] } }; else rij.getCell(k).font = { color: { argb: GRIJS } }; });
     const sc = rij.getCell(9);
-    sc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: STATUS[st][1] } };
-    sc.font = { bold: true, color: { argb: STATUS[st][2] } };
+    sc.fill = vul(STATUS[st][1]);
+    sc.font = { bold: true, size: 10, color: { argb: STATUS[st][2] } };
+    sc.border = { top: lijn(STATUS[st][2]), bottom: lijn(STATUS[st][2]), left: lijn(STATUS[st][2]), right: lijn(STATUS[st][2]) };
     rij.height = Math.max(30, Math.ceil((o.omschrijving || "").length / 50) * 15 + 6);
     if (o.foto) {
       const f = await fotoVoorExcel(o.foto).catch(() => null);
@@ -425,7 +510,12 @@ async function exporteerRonde(rondeId) {
     }
   }
   if (lijst.length) ws.autoFilter = { from: { row: KOP, column: 1 }, to: { row: KOP + lijst.length, column: 9 } };
-  else ws.getCell(`A${KOP + 1}`).value = "Geen observaties in deze ronde.";
+  else { ws.getCell(`A${KOP + 1}`).value = "Geen observaties in deze ronde."; ws.getCell(`A${KOP + 1}`).font = { italic: true, color: { argb: GRIJS } }; }
+
+  // Afsluitende markeerband onder de tabel
+  const eind = KOP + Math.max(lijst.length, 1) + 2;
+  for (let k = 1; k <= 10; k++) ws.getRow(eind).getCell(k).fill = { type: "pattern", pattern: "darkUp", fgColor: { argb: ZWART }, bgColor: { argb: GEEL } };
+  ws.getRow(eind).height = 6;
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });

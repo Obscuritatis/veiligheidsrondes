@@ -132,7 +132,8 @@ function viewSite() {
   const loading = !ready.rondes;
   return `<div style="display:grid;gap:20px">
     <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><span>${esc(siteNaam(s))}</span></nav>
-    <div><div class="eyebrow">Site</div><h2>${esc(siteNaam(s))}</h2></div>
+    <div class="head"><div><div class="eyebrow">Site</div><h2>${esc(siteNaam(s))}</h2></div>
+      <div class="actions"><button class="btn small" data-export-onderwerp="Noodverlichting">${ICO.excel}Excel noodverlichting</button></div></div>
     <form class="panel nieuw" id="form-ronde">
       <h3>Nieuwe veiligheidsronde</h3>
       <div class="row">
@@ -400,51 +401,84 @@ async function fotoVoorExcel(pad) {
 }
 async function exporteerRonde(rondeId) {
   const r = rondes.find(x => x.id === rondeId); if (!r) return;
+  const lijst = obs.filter(o => o.rondeId === r.id).sort((a, b) => (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
+  await maakExcel({
+    titel: "VEILIGHEIDSRONDE BRANDVEILIGHEID", blad: "Ronde", site: r.site, lijst,
+    info: [["Site", siteNaam(r.site)], ["Datum", fmtDate(r.datum)]],
+    kopRechts: `${siteNaam(r.site)} · ${fmtDate(r.datum)}`,
+    bestand: `Veiligheidsronde ${siteNaam(r.site)} ${r.datum}`,
+    leeg: "Geen observaties in deze ronde.",
+  });
+}
+
+// Alle observaties van één onderwerp over alle rondes van een site, met de datum van de ronde erbij
+async function exporteerOnderwerp(site, onderwerp) {
+  const datum = o => (rondes.find(r => r.id === o.rondeId) || {}).datum || "";
+  const lijst = obs.filter(o => o.site === site && o.onderwerp === onderwerp)
+    .sort((a, b) => datum(a).localeCompare(datum(b)) || (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
+  const ds = lijst.map(datum).filter(Boolean).sort();
+  const rs = new Set(lijst.map(o => o.rondeId));
+  await maakExcel({
+    titel: onderwerp.toUpperCase(), blad: onderwerp.slice(0, 31), site, lijst, datum,
+    info: [["Site", siteNaam(site)], ["Onderwerp", onderwerp],
+      ["Rondes", ds.length ? `${rs.size} (${fmtDate(ds[0])} – ${fmtDate(ds[ds.length - 1])})` : "0"]],
+    kopRechts: `${siteNaam(site)} · ${onderwerp}`,
+    bestand: `${onderwerp} ${siteNaam(site)} ${today()}`,
+    leeg: `Geen observaties over ${onderwerp.toLowerCase()} op deze site.`,
+  });
+}
+
+async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, datum }) {
   let ExcelJS;
   try { ExcelJS = await laadExcelJS(); } catch { toast("Excel-export kon niet geladen worden. Controleer je internetverbinding."); return; }
-  const lijst = obs.filter(o => o.rondeId === r.id).sort((a, b) => (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
   const c = counts(lijst);
   const STATUS = { open: ["OPEN", "FFFBE4E1", "FFB3231A"], gemeld: ["GEMELD", "FFFDF0CC", "FF8F5A00"], opgelost: ["OPGELOST", "FFE1F1E7", "FF13804A"] };
   const ROOD = "FFC8261C", ZWART = "FF1B1F1D", GEEL = "FFF5C400", GRIJS = "FF5B625E", LIJN = "FFD3D7D3", ZEBRA = "FFF6F7F5";
   const vul = argb => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
   const lijn = argb => ({ style: "thin", color: { argb } });
+  const band = { type: "pattern", pattern: "darkUp", fgColor: { argb: ZWART }, bgColor: { argb: GEEL } };
+
+  const KOLOMMEN = [
+    ["nr", "Nr", 5], ...(datum ? [["ronde", "Ronde", 12]] : []), ["gebouw", "Gebouw", 14], ["verdiep", "Verdiep", 9], ["lokaal", "Lokaal", 14],
+    ["onderwerp", "Onderwerp", 22], ["omschrijving", "Omschrijving", 45], ["gemeld", "Gemeld", 9], ["opgelost", "Opgelost", 10],
+    ["status", "Status", 12], ["foto", "Foto", 36],
+  ];
+  const K = Object.fromEntries(KOLOMMEN.map(([k], i) => [k, i + 1]));
+  const N = KOLOMMEN.length;
+  const MIDDEN = new Set([K.nr, K.ronde, K.gemeld, K.opgelost, K.status]);
+  const letter = n => String.fromCharCode(64 + n);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "Veiligheidsrondes"; wb.created = new Date();
-  const ws = wb.addWorksheet("Ronde", {
+  const ws = wb.addWorksheet(blad, {
     properties: { tabColor: { argb: ROOD } },
     views: [{ showGridLines: false }],
     pageSetup: { orientation: "landscape", fitToPage: true, fitToWidth: 1, fitToHeight: 0, paperSize: 9,
       margins: { left: 0.4, right: 0.4, top: 0.6, bottom: 0.6, header: 0.3, footer: 0.3 } },
     headerFooter: {
-      oddHeader: `&L&"-,Bold"&KC8261CVEILIGHEIDSRONDE BRANDVEILIGHEID&R${siteNaam(r.site).replace(/&/g, "&&")} · ${fmtDate(r.datum)}`,
+      oddHeader: `&L&"-,Bold"&KC8261C${titel.replace(/&/g, "&&")}&R${kopRechts.replace(/&/g, "&&")}`,
       oddFooter: "&LVeiligheidsrondes&RPagina &P van &N",
     },
   });
-  ws.columns = [
-    { key: "nr", width: 5 }, { key: "gebouw", width: 14 }, { key: "verdiep", width: 9 }, { key: "lokaal", width: 14 },
-    { key: "onderwerp", width: 22 }, { key: "omschrijving", width: 45 }, { key: "gemeld", width: 9 }, { key: "opgelost", width: 10 },
-    { key: "status", width: 12 }, { key: "foto", width: 36 },
-  ];
+  ws.columns = KOLOMMEN.map(([key, , width]) => ({ key, width }));
 
   // Rood bord met titel, daaronder een geel-zwarte markeerband
-  ws.mergeCells("A1:J1");
-  const titel = ws.getCell("A1");
-  titel.value = "VEILIGHEIDSRONDE BRANDVEILIGHEID";
-  titel.font = { bold: true, size: 18, color: { argb: "FFFFFFFF" } };
-  titel.fill = vul(ROOD);
-  titel.alignment = { vertical: "middle", indent: 1 };
+  ws.mergeCells(1, 1, 1, N);
+  const tc = ws.getCell("A1");
+  tc.value = titel;
+  tc.font = { bold: true, size: 18, color: { argb: "FFFFFFFF" } };
+  tc.fill = vul(ROOD);
+  tc.alignment = { vertical: "middle", indent: 1 };
   ws.getRow(1).height = 38;
-  for (let k = 1; k <= 10; k++) ws.getRow(2).getCell(k).fill = { type: "pattern", pattern: "darkUp", fgColor: { argb: ZWART }, bgColor: { argb: GEEL } };
+  for (let k = 1; k <= N; k++) ws.getRow(2).getCell(k).fill = band;
   ws.getRow(2).height = 9;
 
-  // Gegevens van de ronde
-  const info = [["Site", siteNaam(r.site)], ["Datum", fmtDate(r.datum)],
-    ["Observaties", `${lijst.length} (open: ${c.open}, gemeld: ${c.gemeld}, opgelost: ${c.opgelost})`],
+  // Gegevens
+  const regels = [...info, ["Observaties", `${lijst.length} (open: ${c.open}, gemeld: ${c.gemeld}, opgelost: ${c.opgelost})`],
     ["Geëxporteerd op", new Date().toLocaleString("nl-BE")]];
-  info.forEach(([k, v], i) => {
+  regels.forEach(([k, v], i) => {
     const nr = 4 + i, rij = ws.getRow(nr);
-    ws.mergeCells(nr, 1, nr, 2); ws.mergeCells(nr, 3, nr, 6);
+    ws.mergeCells(nr, 1, nr, 2); ws.mergeCells(nr, 3, nr, K.omschrijving);
     rij.getCell(1).value = k.toUpperCase();
     rij.getCell(1).font = { bold: true, size: 9, color: { argb: GRIJS } };
     rij.getCell(1).border = { left: { style: "thick", color: { argb: ROOD } } };
@@ -455,25 +489,26 @@ async function exporteerRonde(rondeId) {
   });
 
   // Tellers als tegels rechts van de gegevens
-  const tegels = [["G", "Open", c.open, STATUS.open], ["H", "Gemeld", c.gemeld, STATUS.gemeld], ["I", "Opgelost", c.opgelost, STATUS.opgelost]];
-  tegels.forEach(([kol, label, n, [, bg, fg]]) => {
-    ws.mergeCells(`${kol}4:${kol}6`);
-    const t = ws.getCell(`${kol}4`);
-    t.value = n; t.font = { bold: true, size: 22, color: { argb: fg } };
-    t.fill = vul(bg); t.alignment = { horizontal: "center", vertical: "middle" };
-    const l = ws.getCell(`${kol}7`);
-    l.value = label.toUpperCase(); l.font = { bold: true, size: 8, color: { argb: fg } };
-    l.fill = vul(bg); l.alignment = { horizontal: "center", vertical: "middle" };
-  });
+  [[K.gemeld, "Open", c.open, STATUS.open], [K.opgelost, "Gemeld", c.gemeld, STATUS.gemeld], [K.status, "Opgelost", c.opgelost, STATUS.opgelost]]
+    .forEach(([kol, label, n, [, bg, fg]]) => {
+      const L = letter(kol);
+      ws.mergeCells(`${L}4:${L}6`);
+      const t = ws.getCell(`${L}4`);
+      t.value = n; t.font = { bold: true, size: 22, color: { argb: fg } };
+      t.fill = vul(bg); t.alignment = { horizontal: "center", vertical: "middle" };
+      const l = ws.getCell(`${L}7`);
+      l.value = label.toUpperCase(); l.font = { bold: true, size: 8, color: { argb: fg } };
+      l.fill = vul(bg); l.alignment = { horizontal: "center", vertical: "middle" };
+    });
 
   // Tabelkop
-  const KOP = 9;
+  const KOP = 5 + regels.length;
   const kop = ws.getRow(KOP);
-  ["Nr", "Gebouw", "Verdiep", "Lokaal", "Onderwerp", "Omschrijving", "Gemeld", "Opgelost", "Status", "Foto"].forEach((t, i) => {
-    const cel = kop.getCell(i + 1);
+  KOLOMMEN.forEach(([, t], i) => {
+    const cel = kop.getCell(i + 1), m = MIDDEN.has(i + 1);
     cel.value = t.toUpperCase(); cel.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
     cel.fill = vul(ZWART);
-    cel.alignment = { vertical: "middle", horizontal: i === 0 || (i >= 6 && i <= 8) ? "center" : "left", indent: i === 0 || (i >= 6 && i <= 8) ? 0 : 1 };
+    cel.alignment = { vertical: "middle", horizontal: m ? "center" : "left", indent: m ? 0 : 1 };
     cel.border = { bottom: { style: "thick", color: { argb: ROOD } } };
   });
   kop.height = 24;
@@ -483,19 +518,21 @@ async function exporteerRonde(rondeId) {
   for (let i = 0; i < lijst.length; i++) {
     const o = lijst[i], st = status(o), rijNr = KOP + 1 + i;
     const rij = ws.getRow(rijNr);
-    rij.values = [i + 1, o.gebouw || "", o.verdiep || "", o.lokaal || "", o.onderwerp || "", o.omschrijving || "",
-      o.gemeld ? "Ja" : "Nee", o.opgelost ? "Ja" : "Nee", STATUS[st][0], o.foto ? "" : "—"];
+    const waarden = { nr: i + 1, ronde: datum ? fmtDate(datum(o)) : "", gebouw: o.gebouw || "", verdiep: o.verdiep || "", lokaal: o.lokaal || "",
+      onderwerp: o.onderwerp || "", omschrijving: o.omschrijving || "", gemeld: o.gemeld ? "Ja" : "Nee", opgelost: o.opgelost ? "Ja" : "Nee",
+      status: STATUS[st][0], foto: o.foto ? "" : "—" };
+    rij.values = KOLOMMEN.map(([k]) => waarden[k]);
     rij.eachCell({ includeEmpty: true }, (cel, k) => {
-      const midden = k === 1 || (k >= 7 && k <= 9);
-      cel.alignment = { vertical: "top", wrapText: true, horizontal: midden ? "center" : "left", indent: midden ? 0 : 1 };
+      const m = MIDDEN.has(k);
+      cel.alignment = { vertical: "top", wrapText: true, horizontal: m ? "center" : "left", indent: m ? 0 : 1 };
       cel.border = { bottom: lijn(LIJN) };
       if (i % 2) cel.fill = vul(ZEBRA);
     });
-    rij.getCell(1).font = { bold: true, color: { argb: GRIJS } };
-    rij.getCell(1).border = { bottom: lijn(LIJN), left: { style: "thick", color: { argb: STATUS[st][2] } } };
-    rij.getCell(5).font = { bold: true };
-    [7, 8].forEach(k => { if (rij.getCell(k).value !== "Nee") rij.getCell(k).font = { bold: true, color: { argb: STATUS.opgelost[2] } }; else rij.getCell(k).font = { color: { argb: GRIJS } }; });
-    const sc = rij.getCell(9);
+    rij.getCell(K.nr).font = { bold: true, color: { argb: GRIJS } };
+    rij.getCell(K.nr).border = { bottom: lijn(LIJN), left: { style: "thick", color: { argb: STATUS[st][2] } } };
+    rij.getCell(K.onderwerp).font = { bold: true };
+    [K.gemeld, K.opgelost].forEach(k => { rij.getCell(k).font = rij.getCell(k).value === "Ja" ? { bold: true, color: { argb: STATUS.opgelost[2] } } : { color: { argb: GRIJS } }; });
+    const sc = rij.getCell(K.status);
     sc.fill = vul(STATUS[st][1]);
     sc.font = { bold: true, size: 10, color: { argb: STATUS[st][2] } };
     sc.border = { top: lijn(STATUS[st][2]), bottom: lijn(STATUS[st][2]), left: lijn(STATUS[st][2]), right: lijn(STATUS[st][2]) };
@@ -504,22 +541,22 @@ async function exporteerRonde(rondeId) {
       const f = await fotoVoorExcel(o.foto).catch(() => null);
       if (f) {
         const id = wb.addImage({ base64: f.base64, extension: "jpeg" });
-        ws.addImage(id, { tl: { col: 9.05, row: rijNr - 1 + 0.05 }, ext: { width: f.width, height: f.height }, editAs: "oneCell" });
+        ws.addImage(id, { tl: { col: K.foto - 1 + 0.05, row: rijNr - 1 + 0.05 }, ext: { width: f.width, height: f.height }, editAs: "oneCell" });
         rij.height = Math.max(rij.height, f.height * 0.75 + 8);
-      } else rij.getCell(10).value = "(foto niet beschikbaar)";
+      } else rij.getCell(K.foto).value = "(foto niet beschikbaar)";
     }
   }
-  if (lijst.length) ws.autoFilter = { from: { row: KOP, column: 1 }, to: { row: KOP + lijst.length, column: 9 } };
-  else { ws.getCell(`A${KOP + 1}`).value = "Geen observaties in deze ronde."; ws.getCell(`A${KOP + 1}`).font = { italic: true, color: { argb: GRIJS } }; }
+  if (lijst.length) ws.autoFilter = { from: { row: KOP, column: 1 }, to: { row: KOP + lijst.length, column: K.status } };
+  else { ws.getCell(`A${KOP + 1}`).value = leeg; ws.getCell(`A${KOP + 1}`).font = { italic: true, color: { argb: GRIJS } }; }
 
   // Afsluitende markeerband onder de tabel
   const eind = KOP + Math.max(lijst.length, 1) + 2;
-  for (let k = 1; k <= 10; k++) ws.getRow(eind).getCell(k).fill = { type: "pattern", pattern: "darkUp", fgColor: { argb: ZWART }, bgColor: { argb: GEEL } };
+  for (let k = 1; k <= N; k++) ws.getRow(eind).getCell(k).fill = band;
   ws.getRow(eind).height = 6;
 
   const buf = await wb.xlsx.writeBuffer();
   const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const naam = `Veiligheidsronde ${siteNaam(r.site)} ${r.datum}.xlsx`.replace(/[\\/:*?"<>|]/g, "-");
+  const naam = `${bestand}.xlsx`.replace(/[\\/:*?"<>|]/g, "-");
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob); a.download = naam;
   document.body.appendChild(a); a.click(); a.remove();
@@ -639,7 +676,8 @@ document.addEventListener("click", async e => {
   if (!b) return;
   const d = b.dataset;
   if (b.id === "logout") { await sb.auth.signOut(); return; }
-  if ("export" in d) { b.disabled = true; const t = b.textContent; b.textContent = "Bezig…"; try { await exporteerRonde(state.ronde); } finally { b.disabled = false; b.textContent = t; } return; }
+  if ("export" in d || d.exportOnderwerp) { b.disabled = true; const t = b.innerHTML; b.textContent = "Bezig…";
+    try { await (d.exportOnderwerp ? exporteerOnderwerp(state.site, d.exportOnderwerp) : exporteerRonde(state.ronde)); } finally { b.disabled = false; b.innerHTML = t; } return; }
   if ("overzetten" in d) { b.disabled = true; await zetLokaalOver(); return; }
   if (d.fotoWeg) { const pre = d.fotoWeg; const had = !!fotoKeuze[pre]; wisKeuze(pre); if (!had || pre === "e") fotoWeg[pre] = !had; render(); return; }
   if (d.groot) {

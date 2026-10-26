@@ -10,7 +10,7 @@ const ONDERWERPEN = ["Branddeur", "Noodverlichting", "Versperring doorgang", "Ve
 
 let sb = null, db = null, sessie = null;
 let ready = { rondes: false, obs: false };
-let rondes = [];   // {id, site, datum, aangemaakt}
+let rondes = [];   // {id, site, datum, inOrde, aangemaakt}
 let obs = [];      // {id, rondeId, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt}
 let state = { view: "sites", site: null, ronde: null, filter: "alle", editObs: null, confirm: null, editRonde: false };
 
@@ -22,11 +22,14 @@ const siteNaam = id => (SITES.find(s => s.id === id) || {}).naam || id;
 const locTekst = o => [o.gebouw, o.verdiep ? "verdiep " + o.verdiep : "", o.lokaal].filter(Boolean).join(", ") || o.locatie || "";
 const gebouwen = os => esc([...new Set(os.map(o => o.gebouw).filter(Boolean))].join(", "));
 const status = o => o.opgelost ? "opgelost" : o.gemeld ? "gemeld" : "open";
+// Een ronde zonder observaties die als "alles in orde" is aangevinkt, is afgewerkt
+const allesInOrde = r => !!r.inOrde && !obs.some(o => o.rondeId === r.id);
 
 /* Pictogrammen in de stijl van veiligheidssignalisatie (vaste SVG, geen gebruikersinvoer) */
 const svg = (d, extra = "") => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"${extra}>${d}</svg>`;
 const ICO = {
   gebouw: svg('<path d="M4 21V5l8-3v19M12 8l8 3v10M2 21h20M7 8h2M7 12h2M7 16h2M15 13h2M15 17h2"/>'),
+  vink: svg('<path d="m5 12.5 4.5 4.5L19 7"/>'),
   klok: svg('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   excel: svg('<path d="M12 3v12M7 10l5 5 5-5M4 19h16"/>'),
   Branddeur: svg('<path d="M6 21V3h12v18M3 21h18M14 12h1"/><path d="M9 7h6"/>'),
@@ -123,9 +126,9 @@ function viewSite() {
     return `<button class="ronde" data-go-ronde="${esc(r.id)}">
       ${stempel(r.datum)}
       <span class="ronde-info">
-        <span class="loc">${gebouwen(os) || '<span class="muted">Nog geen observaties</span>'}</span>
-        <span class="stats"><span class="pill">${os.length} ${os.length === 1 ? "observatie" : "observaties"}</span>${pills(counts(os))}</span>
-        ${voortgang(counts(os))}
+        <span class="loc">${gebouwen(os) || (allesInOrde(r) ? "Niets te melden" : '<span class="muted">Nog geen observaties</span>')}</span>
+        <span class="stats">${allesInOrde(r) ? '<span class="pill ok">✓ Alles in orde</span>' : `<span class="pill">${os.length} ${os.length === 1 ? "observatie" : "observaties"}</span>${pills(counts(os))}`}</span>
+        ${allesInOrde(r) ? '<span class="voortgang"><i class="v-ok" style="width:100%"></i></span>' : voortgang(counts(os))}
       </span>
     </button>`;
   }).join("");
@@ -237,15 +240,17 @@ function viewRonde() {
         <div class="teller t-ok"><b>${c.opgelost}</b><span>Opgelost</span></div>
       </div>
       ${voortgang(c)}
+      ${all.length ? "" : `<label class="check in-orde"><input type="checkbox" data-in-orde ${r.inOrde ? "checked" : ""}> Alles in orde, niets te melden</label>`}
     </div></section>`;
   return `<div style="display:grid;gap:20px">
     <nav class="crumbs"><button data-go-sites>Alle sites</button><span>/</span><button data-go-site="${esc(r.site)}">${esc(siteNaam(r.site))}</button><span>/</span><span>${fmtDate(r.datum)}</span></nav>
     ${head}
+    ${allesInOrde(r) ? `<div class="afgewerkt"><span class="picto p-groen">${ICO.vink}</span><div><h3>Ronde afgewerkt</h3><p>Alles in orde, er was niets te melden. Vink het vakje hierboven uit om toch een observatie toe te voegen.</p></div></div>` : `
     <form class="panel nieuw" id="form-obs"><h3>Nieuwe observatie</h3>${obsForm(null)}</form>
     <div style="display:grid;gap:10px">
       <div class="head"><h3 class="sectie-kop">Vaststellingen</h3><div class="filters">${filt}</div></div>
-      ${shown.length ? `<div class="list">${list}</div>` : `<div class="empty">${all.length ? "Geen observaties met deze status." : "Nog geen observaties in deze ronde. Voeg hierboven de eerste toe."}</div>`}
-    </div>
+      ${shown.length ? `<div class="list">${list}</div>` : `<div class="empty">${all.length ? "Geen observaties met deze status." : "Nog geen observaties in deze ronde. Voeg hierboven de eerste toe, of vink \u201calles in orde\u201d aan als er niets te melden is."}</div>`}
+    </div>`}
   </div>`;
 }
 
@@ -290,7 +295,7 @@ function lokaleClient() {
 function lokaleVoorraad() { if (lokaal) return null; let d; try { d = leesLokaal(); } catch { return null; } return d.rondes.length ? d : null; }
 async function zetLokaalOver() {
   const d = lokaleVoorraad(); if (!d) return;
-  const rondesRijen = d.rondes.map(({ id, site, datum, aangemaakt }) => ({ id, site, datum, aangemaakt }));
+  const rondesRijen = d.rondes.map(({ id, site, datum, in_orde, aangemaakt }) => ({ id, site, datum, in_orde: !!in_orde, aangemaakt }));
   const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto }) =>
     ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto: foto || null }));
   for (const o of obsRijen) {
@@ -404,10 +409,10 @@ async function exporteerRonde(rondeId) {
   const lijst = obs.filter(o => o.rondeId === r.id).sort((a, b) => (a.aangemaakt || "").localeCompare(b.aangemaakt || ""));
   await maakExcel({
     titel: "VEILIGHEIDSRONDE BRANDVEILIGHEID", blad: "Ronde", site: r.site, lijst,
-    info: [["Site", siteNaam(r.site)], ["Datum", fmtDate(r.datum)]],
+    info: [["Site", siteNaam(r.site)], ["Datum", fmtDate(r.datum)], ...(allesInOrde(r) ? [["Resultaat", "✓ Alles in orde, niets te melden"]] : [])],
     kopRechts: `${siteNaam(r.site)} · ${fmtDate(r.datum)}`,
     bestand: `Veiligheidsronde ${siteNaam(r.site)} ${r.datum}`,
-    leeg: "Geen observaties in deze ronde.",
+    leeg: allesInOrde(r) ? "Alles in orde, niets te melden." : "Geen observaties in deze ronde.",
   });
 }
 
@@ -565,7 +570,7 @@ async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, d
 }
 
 /* ---------- Opslag (Supabase) ---------- */
-const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
+const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, inOrde: !!r.in_orde, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
   onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt, foto: r.foto || null });
 
 async function laadAlles() {
@@ -664,6 +669,11 @@ document.addEventListener("change", async e => {
     wisKeuze(pre);
     fotoKeuze[pre] = blob; fotoPreview[pre] = URL.createObjectURL(blob);
     render();
+    return;
+  }
+  if ("inOrde" in t.dataset) {
+    const ok = await write(() => sb.from("rondes").update({ in_orde: t.checked }).eq("id", state.ronde), t.checked ? "Ronde afgewerkt: alles in orde" : "Opgeslagen");
+    if (!ok) t.checked = !t.checked;
     return;
   }
   if (!t.dataset.toggle) return;

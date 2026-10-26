@@ -13,6 +13,9 @@ create table if not exists public.rondes (
   aangemaakt_door uuid default auth.uid()
 );
 
+-- Ronde zonder vaststellingen afvinken als "alles in orde"
+alter table public.rondes add column if not exists in_orde boolean not null default false;
+
 create table if not exists public.observaties (
   id uuid primary key default gen_random_uuid(),
   ronde_id uuid not null references public.rondes(id) on delete cascade,

@@ -1,6 +1,6 @@
 // Maakt de app installeerbaar. Altijd eerst het netwerk, zodat je steeds de nieuwste versie ziet;
 // zonder verbinding valt de app terug op de laatst geladen versie. Supabase-verkeer gaat er niet langs.
-const CACHE = "vr-20261026c";
+const CACHE = "vr-20261029";
 self.addEventListener("install", () => self.skipWaiting());
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));

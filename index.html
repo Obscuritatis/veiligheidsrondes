@@ -188,6 +188,12 @@ button.duim-knop { padding: 0; border: 0; background: none; cursor: zoom-in; jus
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .filters button[aria-pressed=true] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
 
+.status-veld { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.op-datum { display: inline-flex; align-items: center; gap: 6px; font-size: .85rem; color: var(--muted); }
+.op-datum input[type=date] { width: auto; min-height: 38px; padding: 4px 8px; }
+.op-datum span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.status-veld:has(input[type=checkbox]:not(:checked)) .op-datum { display: none; }
+.check .op { font-weight: 500; font-size: .8rem; opacity: .85; font-variant-numeric: tabular-nums; }
 .check.in-orde { justify-self: start; }
 .afgewerkt { display: flex; gap: 14px; align-items: center; background: var(--ok-bg); color: var(--ok); border: 2px solid var(--ok); border-radius: 6px; padding: 16px; }
 .afgewerkt p { margin: 2px 0 0; color: var(--fg); }

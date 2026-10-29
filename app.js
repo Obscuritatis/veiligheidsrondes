@@ -11,7 +11,7 @@ const ONDERWERPEN = ["Branddeur", "Noodverlichting", "Versperring doorgang", "Ve
 let sb = null, db = null, sessie = null;
 let ready = { rondes: false, obs: false };
 let rondes = [];   // {id, site, datum, inOrde, aangemaakt}
-let obs = [];      // {id, rondeId, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt}
+let obs = [];      // {id, rondeId, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, gemeldOp, opgelost, opgelostOp, aangemaakt}
 let state = { view: "sites", site: null, ronde: null, filter: "alle", editObs: null, confirm: null, editRonde: false };
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -23,6 +23,13 @@ const locTekst = o => [o.gebouw, o.verdiep ? "verdiep " + o.verdiep : "", o.loka
 const gebouwen = os => esc([...new Set(os.map(o => o.gebouw).filter(Boolean))].join(", "));
 const status = o => o.opgelost ? "opgelost" : o.gemeld ? "gemeld" : "open";
 // Een ronde zonder observaties die als "alles in orde" is aangevinkt, is afgewerkt
+// Datum waarop een melding gemeld of opgelost werd, als opvolging
+const opDatum = iso => iso ? `<span class="op">op ${fmtDate(iso)}</span>` : "";
+const statusVeld = (pre, veld, label, e) => {
+  const aan = !!e[veld], op = e[veld + "Op"];
+  return `<span class="status-veld"><label class="check"><input type="checkbox" id="${pre}-${veld}" ${aan ? "checked" : ""}> ${label}</label>
+    <label class="op-datum"><span>${label} op</span><input type="date" id="${pre}-${veld}-op" value="${esc(aan ? op || "" : today())}"></label></span>`;
+};
 const allesInOrde = r => !!r.inOrde && !obs.some(o => o.rondeId === r.id);
 
 /* Pictogrammen in de stijl van veiligheidssignalisatie (vaste SVG, geen gebruikersinvoer) */
@@ -179,8 +186,8 @@ function obsForm(o) {
     </div>
     <div class="head">
       <div class="checks">
-        <label class="check"><input type="checkbox" id="${pre}-gemeld" ${e.gemeld ? "checked" : ""}> Gemeld</label>
-        <label class="check"><input type="checkbox" id="${pre}-opgelost" ${e.opgelost ? "checked" : ""}> Opgelost</label>
+        ${statusVeld(pre, "gemeld", "Gemeld", e)}
+        ${statusVeld(pre, "opgelost", "Opgelost", e)}
       </div>
       <div class="actions">
         ${o ? '<button type="button" class="btn" data-cancel-edit>Annuleren</button>' : ""}
@@ -208,8 +215,8 @@ function viewRonde() {
       ${o.foto ? `<button type="button" class="duim-knop" data-groot="${esc(o.foto)}" aria-label="Foto vergroten"><img class="duim" data-foto="${esc(o.foto)}" alt="Foto bij observatie"></button>` : ""}
       <div class="obs-bottom">
         <div class="checks">
-          <label class="check"><input type="checkbox" id="g-${o.id}" data-toggle="gemeld" data-id="${esc(o.id)}" ${o.gemeld ? "checked" : ""}> Gemeld</label>
-          <label class="check"><input type="checkbox" id="s-${o.id}" data-toggle="opgelost" data-id="${esc(o.id)}" ${o.opgelost ? "checked" : ""}> Opgelost</label>
+          <label class="check"><input type="checkbox" id="g-${o.id}" data-toggle="gemeld" data-id="${esc(o.id)}" ${o.gemeld ? "checked" : ""}> Gemeld ${o.gemeld ? opDatum(o.gemeldOp) : ""}</label>
+          <label class="check"><input type="checkbox" id="s-${o.id}" data-toggle="opgelost" data-id="${esc(o.id)}" ${o.opgelost ? "checked" : ""}> Opgelost ${o.opgelost ? opDatum(o.opgelostOp) : ""}</label>
         </div>
         <div class="actions">
           ${conf
@@ -262,7 +269,7 @@ function leesLokaal() {
   return { rondes: [], observaties: [] };
 }
 function schrijfLokaal(d) { localStorage.setItem(LOKAAL_KEY, JSON.stringify(d)); }
-const OBS_STANDAARD = { gebouw: "", verdiep: "", lokaal: "", omschrijving: "", gemeld: false, opgelost: false, foto: null };
+const OBS_STANDAARD = { gebouw: "", verdiep: "", lokaal: "", omschrijving: "", gemeld: false, gemeld_op: null, opgelost: false, opgelost_op: null, foto: null };
 function lokaleClient() {
   const ok = { error: null };
   const doe = fn => { try { fn(); return ok; } catch (e) { return { error: e }; } };
@@ -296,8 +303,8 @@ function lokaleVoorraad() { if (lokaal) return null; let d; try { d = leesLokaal
 async function zetLokaalOver() {
   const d = lokaleVoorraad(); if (!d) return;
   const rondesRijen = d.rondes.map(({ id, site, datum, in_orde, aangemaakt }) => ({ id, site, datum, in_orde: !!in_orde, aangemaakt }));
-  const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto }) =>
-    ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, opgelost, aangemaakt, foto: foto || null }));
+  const obsRijen = d.observaties.map(({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, gemeld_op, opgelost, opgelost_op, aangemaakt, foto }) =>
+    ({ id, ronde_id, site, gebouw, verdiep, lokaal, onderwerp, omschrijving, gemeld, gemeld_op: gemeld_op || null, opgelost, opgelost_op: opgelost_op || null, aangemaakt, foto: foto || null }));
   for (const o of obsRijen) {
     if (!o.foto) continue;
     const blob = await idb("get", o.foto).catch(() => null);
@@ -445,7 +452,7 @@ async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, d
 
   const KOLOMMEN = [
     ["nr", "Nr", 5], ...(datum ? [["ronde", "Ronde", 12]] : []), ["gebouw", "Gebouw", 14], ["verdiep", "Verdiep", 9], ["lokaal", "Lokaal", 14],
-    ["onderwerp", "Onderwerp", 22], ["omschrijving", "Omschrijving", 45], ["gemeld", "Gemeld", 9], ["opgelost", "Opgelost", 10],
+    ["onderwerp", "Onderwerp", 22], ["omschrijving", "Omschrijving", 45], ["gemeld", "Gemeld", 12], ["opgelost", "Opgelost", 12],
     ["status", "Status", 12], ["foto", "Foto", 36],
   ];
   const K = Object.fromEntries(KOLOMMEN.map(([k], i) => [k, i + 1]));
@@ -524,7 +531,7 @@ async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, d
     const o = lijst[i], st = status(o), rijNr = KOP + 1 + i;
     const rij = ws.getRow(rijNr);
     const waarden = { nr: i + 1, ronde: datum ? fmtDate(datum(o)) : "", gebouw: o.gebouw || "", verdiep: o.verdiep || "", lokaal: o.lokaal || "",
-      onderwerp: o.onderwerp || "", omschrijving: o.omschrijving || "", gemeld: o.gemeld ? "Ja" : "Nee", opgelost: o.opgelost ? "Ja" : "Nee",
+      onderwerp: o.onderwerp || "", omschrijving: o.omschrijving || "", gemeld: o.gemeld ? (o.gemeldOp ? "Ja\n" + fmtDate(o.gemeldOp) : "Ja") : "Nee", opgelost: o.opgelost ? (o.opgelostOp ? "Ja\n" + fmtDate(o.opgelostOp) : "Ja") : "Nee",
       status: STATUS[st][0], foto: o.foto ? "" : "—" };
     rij.values = KOLOMMEN.map(([k]) => waarden[k]);
     rij.eachCell({ includeEmpty: true }, (cel, k) => {
@@ -536,7 +543,7 @@ async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, d
     rij.getCell(K.nr).font = { bold: true, color: { argb: GRIJS } };
     rij.getCell(K.nr).border = { bottom: lijn(LIJN), left: { style: "thick", color: { argb: STATUS[st][2] } } };
     rij.getCell(K.onderwerp).font = { bold: true };
-    [K.gemeld, K.opgelost].forEach(k => { rij.getCell(k).font = rij.getCell(k).value === "Ja" ? { bold: true, color: { argb: STATUS.opgelost[2] } } : { color: { argb: GRIJS } }; });
+    [K.gemeld, K.opgelost].forEach(k => { rij.getCell(k).font = String(rij.getCell(k).value).startsWith("Ja") ? { bold: true, color: { argb: STATUS.opgelost[2] } } : { color: { argb: GRIJS } }; });
     const sc = rij.getCell(K.status);
     sc.fill = vul(STATUS[st][1]);
     sc.font = { bold: true, size: 10, color: { argb: STATUS[st][2] } };
@@ -571,7 +578,7 @@ async function maakExcel({ titel, blad, lijst, info, kopRechts, bestand, leeg, d
 
 /* ---------- Opslag (Supabase) ---------- */
 const fromRow = r => ({ id: r.id, rondeId: r.ronde_id, site: r.site, datum: r.datum, inOrde: !!r.in_orde, gebouw: r.gebouw, verdiep: r.verdiep, lokaal: r.lokaal,
-  onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, opgelost: r.opgelost, aangemaakt: r.aangemaakt, foto: r.foto || null });
+  onderwerp: r.onderwerp, omschrijving: r.omschrijving, gemeld: r.gemeld, gemeldOp: r.gemeld_op || null, opgelost: r.opgelost, opgelostOp: r.opgelost_op || null, aangemaakt: r.aangemaakt, foto: r.foto || null });
 
 async function laadAlles() {
   const [r, o] = await Promise.all([
@@ -607,7 +614,9 @@ function readObsForm(pre) {
     onderwerp: $(`#${pre}-onderwerp`).value,
     omschrijving: $(`#${pre}-omschrijving`).value.trim(),
     gemeld: $(`#${pre}-gemeld`).checked,
+    gemeld_op: $(`#${pre}-gemeld`).checked ? $(`#${pre}-gemeld-op`).value || null : null,
     opgelost: $(`#${pre}-opgelost`).checked,
+    opgelost_op: $(`#${pre}-opgelost`).checked ? $(`#${pre}-opgelost-op`).value || null : null,
   };
 }
 
@@ -677,7 +686,8 @@ document.addEventListener("change", async e => {
     return;
   }
   if (!t.dataset.toggle) return;
-  const ok = await write(() => sb.from("observaties").update({ [t.dataset.toggle]: t.checked }).eq("id", t.dataset.id));
+  const veld = t.dataset.toggle;
+  const ok = await write(() => sb.from("observaties").update({ [veld]: t.checked, [veld + "_op"]: t.checked ? today() : null }).eq("id", t.dataset.id));
   if (!ok) t.checked = !t.checked;
 });
 

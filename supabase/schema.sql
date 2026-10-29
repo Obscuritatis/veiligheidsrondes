@@ -32,6 +32,9 @@ create table if not exists public.observaties (
   aangemaakt_door uuid default auth.uid()
 );
 alter table public.observaties add column if not exists foto text;
+-- Opvolging: datum waarop een observatie gemeld en opgelost werd
+alter table public.observaties add column if not exists gemeld_op date;
+alter table public.observaties add column if not exists opgelost_op date;
 -- De lijst met onderwerpen staat in de app (index.html), niet in de database.
 alter table public.observaties drop constraint if exists observaties_onderwerp_check;
 create index if not exists observaties_ronde_idx on public.observaties(ronde_id);
